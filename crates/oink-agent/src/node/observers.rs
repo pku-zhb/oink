@@ -357,6 +357,7 @@ impl Node {
 
 impl Node {
     pub(super) fn start_observers(&self) -> anyhow::Result<()> {
+        crate::physical_monitors::experience::resume_recovery(self);
         self.start_platform_observer()?;
         #[cfg(target_os = "macos")]
         if self.native_services_enabled() {

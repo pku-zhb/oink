@@ -607,7 +607,10 @@ impl Owner {
         self.publish_facts()
     }
     pub(crate) fn device_control(&mut self, peer: DeviceId, message: Message) -> ApiResult<()> {
-        if !(0x0d23..=0x0d30).contains(&message.type_id()) && message.type_id() != 0x0110 {
+        if !(0x0d23..=0x0d30).contains(&message.type_id())
+            && message.type_id() != 0x0110
+            && !matches!(message.type_id(), 0x0d35 | 0x0d36)
+        {
             return Err(invalid("invalid device control message"));
         }
         let id = self
@@ -617,6 +620,17 @@ impl Owner {
                 (s.ready && s.peer_boot.device_id == peer && self.state.roster().contains(peer)).then_some(*id)
             })
             .ok_or_else(stopped)?;
+        if matches!(message.type_id(), 0x0d35 | 0x0d36)
+            && !self
+                .links
+                .links()
+                .links
+                .iter()
+                .find(|l| l.link == id)
+                .is_some_and(|l| l.agreement.contains("oink.physical-monitors/2"))
+        {
+            return Err(invalid("physical monitor capability was not negotiated"));
+        }
         if message.type_id() == 0x0110
             && !self
                 .links

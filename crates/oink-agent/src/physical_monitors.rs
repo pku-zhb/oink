@@ -24,6 +24,15 @@ use std::{
 };
 
 pub const CAP: &str = "oink.physical-monitors/1";
+mod desktop;
+pub mod experience;
+#[cfg(all(test, debug_assertions))]
+#[path = "physical_monitors/experience_tests.rs"]
+mod experience_tests;
+mod hardware;
+mod model;
+pub mod recovery;
+mod transport;
 static GATE: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -56,6 +65,9 @@ pub struct Setup {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    Experience {
+        request: experience::Request,
+    },
     Query,
     Save {
         expected_revision: u64,
@@ -368,6 +380,10 @@ fn transaction(
 }
 
 pub fn execute(node: &Node, command: Command) -> ApiResult<serde_json::Value> {
+    if let Command::Experience { request } = command {
+        return experience::execute(node, request).map_err(invalid);
+    }
+    experience::legacy_guard(node, &command).map_err(invalid)?;
     let _gate = GATE.lock().unwrap_or_else(|e| e.into_inner());
     let path = node.data_dir().join("physical-monitors.json");
     let setup: Setup = match std::fs::read(&path) {
@@ -381,6 +397,7 @@ pub fn execute(node: &Node, command: Command) -> ApiResult<serde_json::Value> {
     let state = |setup: &Setup| serde_json::json!({"setup":setup, "active":group.applied().layout.settings.physical_screens, "controller_available":cfg!(any(target_os="macos",windows))});
     let mut ddc = LocalDdc;
     match command {
+        Command::Experience { .. } => unreachable!("handled before the legacy gate"),
         Command::Query => Ok(state(&setup)),
         Command::Save {
             expected_revision,

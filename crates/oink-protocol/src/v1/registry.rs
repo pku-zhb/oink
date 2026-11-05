@@ -117,6 +117,7 @@ pub const CAPABILITIES: &[&str] = &[
     "oink.layout.profiles/3",
     "oink.layout.topology/1",
     "oink.physical-monitors/1",
+    "oink.physical-monitors/2",
     "oink.audio.local-output/1",
     "oink.input.touchpad-options/1",
     "oink.input.scroll-pixels/1",

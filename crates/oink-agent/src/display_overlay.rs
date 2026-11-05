@@ -70,6 +70,26 @@ pub(crate) fn identify_local(node: &Node, id: u64) {
     );
 }
 
+pub(crate) fn identify_physical(node: &Node, display: String, label: String) {
+    if !node.native_services_enabled() {
+        return;
+    }
+    set_overlay(
+        node,
+        Some(Overlay {
+            id: now_ms(),
+            kind: OverlayKind::Identify,
+            screens: vec![OverlayScreen {
+                display,
+                device_name: node.device_name(node.id()),
+                display_name: label,
+                content: OverlayContent::Identify,
+            }],
+            expires_at_ms: Some(now_ms() as i64 + 10_000),
+        }),
+    );
+}
+
 pub(crate) fn identify(node: &Node) {
     let id = now_ms();
     identify_local(node, id);

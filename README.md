@@ -9,8 +9,8 @@
 
 > **Modified experimental fork by pku-zhb, based on Oink v0.3.2.** This is not an
 > official Oink release. Original Oink attribution and licenses are retained.
-> This branch adds physical monitor ownership, guided input binding, and verified
-> BetterDisplay / native Windows DDC input switching. See the [physical monitor guide](README.zh-CN.md#物理屏幕归属本-fork-新增).
+> This branch adds guided shared-monitor setup, reversible desktop assignments,
+> and capability-gated BetterDisplay / native Windows display management. See the [physical monitor guide](docs/physical-monitors.md).
 
 **English** | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 

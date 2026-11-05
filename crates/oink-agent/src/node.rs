@@ -186,6 +186,7 @@ pub(crate) struct Inner {
     pub(crate) cards: Mutex<crate::device_cards::Projector>,
     pub(crate) controls: Mutex<crate::device_controls::runtime::State>,
     pub(crate) profiles: crate::layout_profiles::state::State,
+    pub(crate) physical: crate::physical_monitors::experience::Runtime,
     input_observation: Mutex<Option<access::InputObservation>>,
 
     sinks: Mutex<Vec<crate::event_delivery::Subscriber>>,
@@ -440,6 +441,7 @@ impl Node {
                 ),
                 controls: Mutex::default(),
                 profiles: Default::default(),
+                physical: Default::default(),
                 input_observation: Mutex::default(),
                 sinks: Mutex::new(Vec::new()),
                 next_sink: AtomicU64::new(0),

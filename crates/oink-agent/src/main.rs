@@ -338,6 +338,9 @@ fn main_inner() -> ExitCode {
 }
 
 fn execute() -> anyhow::Result<ExitCode> {
+    if let Some(code) = oink_agent::physical_monitors::recovery::dispatch() {
+        return Ok(code);
+    }
     oink_foundation::process::initialize_priority().context("Oink process priority initialization failed")?;
     #[cfg(windows)]
     if let Some(code) = oink_input::dispatch_raw_clip_guard() {

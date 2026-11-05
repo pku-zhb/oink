@@ -171,6 +171,9 @@ fn uuid(id: [u8; 16]) -> String {
 impl Node {
     pub(crate) fn receive_device_control(&self, peer: DeviceKey, message: Message) {
         match message {
+            Message::PhysicalMonitorRequest(_) | Message::PhysicalMonitorResult(_) => {
+                self.receive_physical_monitor(peer, message)
+            }
             Message::LayoutArrangementRequest(_) | Message::LayoutArrangementResult(_) => {
                 self.receive_arrangement(peer, message)
             }

@@ -931,6 +931,19 @@ wire_map!(ControlPowerState, validate_power_state, {
     3 => system: bool = required;
     4 => activity: bool = required;
 });
+
+// Capability-gated physical desktop operations. Bodies are bounded, versioned
+// application values; boot and request identity are admitted before execution.
+wire_map!(PhysicalMonitorRequest, no_validation, {
+    1 => request_id: Id16 = required;
+    2 => target: Boot = required;
+    3 => body: Text<32768> = required;
+});
+wire_map!(PhysicalMonitorResult, no_validation, {
+    1 => request_id: Id16 = required;
+    2 => target: Boot = required;
+    3 => body: Text<32768> = required;
+});
 fn validate_power_state(raw: &RawMap) -> Result<()> {
     if !required::<bool>(raw, 1)?
         && (required::<bool>(raw, 2)? || required::<bool>(raw, 3)? || required::<bool>(raw, 4)?)

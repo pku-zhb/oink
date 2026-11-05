@@ -84400,6 +84400,342 @@
       "file": "dto-LayoutProfileJoinAppends.hex",
       "kind": "dto",
       "schema": "LayoutProfileJoinAppends"
+    },
+    {
+      "capabilities": [
+        "oink.group/1",
+        "oink.physical-monitors/2"
+      ],
+      "expected": {
+        "map": {
+          "1": {
+            "bytes": "00000000000000000000000000000000"
+          },
+          "2": {
+            "map": {
+              "1": {
+                "map": {
+                  "1": {
+                    "text": "ed25519"
+                  },
+                  "2": {
+                    "bytes": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                }
+              },
+              "2": {
+                "bytes": "00000000000000000000000000000000"
+              }
+            }
+          },
+          "3": {
+            "text": "synthetic"
+          }
+        }
+      },
+      "file": "0d35.hex",
+      "kind": "frame",
+      "routes": [
+        {
+          "extra_capabilities": [],
+          "kind": 2,
+          "transport": "Reliable"
+        }
+      ],
+      "schema": "PhysicalMonitorRequest",
+      "type_id": 3381
+    },
+    {
+      "capabilities": [
+        "oink.group/1",
+        "oink.physical-monitors/2"
+      ],
+      "expected": {
+        "map": {
+          "1": {
+            "bytes": "00000000000000000000000000000000"
+          },
+          "2": {
+            "map": {
+              "1": {
+                "map": {
+                  "1": {
+                    "text": "ed25519"
+                  },
+                  "2": {
+                    "bytes": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                }
+              },
+              "2": {
+                "bytes": "00000000000000000000000000000000"
+              }
+            }
+          },
+          "3": {
+            "text": "synthetic"
+          },
+          "900": {
+            "map": {
+              "1": {
+                "uint": "18446744073709551615"
+              },
+              "2": {
+                "f32_bits": "3fa00000"
+              },
+              "3": {
+                "f64_bits": "c004000000000000"
+              },
+              "4": {
+                "list": [
+                  null,
+                  {
+                    "bytes": "00ff"
+                  },
+                  {
+                    "negative_argument": "18446744073709551615"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "file": "0d35-future.hex",
+      "kind": "frame",
+      "routes": [
+        {
+          "extra_capabilities": [],
+          "kind": 2,
+          "transport": "Reliable"
+        }
+      ],
+      "schema": "PhysicalMonitorRequest",
+      "type_id": 3381
+    },
+    {
+      "capabilities": [
+        "oink.group/1",
+        "oink.physical-monitors/2"
+      ],
+      "expected": {
+        "map": {
+          "1": {
+            "bytes": "00000000000000000000000000000000"
+          },
+          "2": {
+            "map": {
+              "1": {
+                "map": {
+                  "1": {
+                    "text": "ed25519"
+                  },
+                  "2": {
+                    "bytes": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                }
+              },
+              "2": {
+                "bytes": "00000000000000000000000000000000"
+              }
+            }
+          },
+          "3": {
+            "text": "synthetic"
+          }
+        }
+      },
+      "file": "0d36.hex",
+      "kind": "frame",
+      "routes": [
+        {
+          "extra_capabilities": [],
+          "kind": 2,
+          "transport": "Reliable"
+        }
+      ],
+      "schema": "PhysicalMonitorResult",
+      "type_id": 3382
+    },
+    {
+      "capabilities": [
+        "oink.group/1",
+        "oink.physical-monitors/2"
+      ],
+      "expected": {
+        "map": {
+          "1": {
+            "bytes": "00000000000000000000000000000000"
+          },
+          "2": {
+            "map": {
+              "1": {
+                "map": {
+                  "1": {
+                    "text": "ed25519"
+                  },
+                  "2": {
+                    "bytes": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                }
+              },
+              "2": {
+                "bytes": "00000000000000000000000000000000"
+              }
+            }
+          },
+          "3": {
+            "text": "synthetic"
+          },
+          "900": {
+            "map": {
+              "1": {
+                "uint": "18446744073709551615"
+              },
+              "2": {
+                "f32_bits": "3fa00000"
+              },
+              "3": {
+                "f64_bits": "c004000000000000"
+              },
+              "4": {
+                "list": [
+                  null,
+                  {
+                    "bytes": "00ff"
+                  },
+                  {
+                    "negative_argument": "18446744073709551615"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "file": "0d36-future.hex",
+      "kind": "frame",
+      "routes": [
+        {
+          "extra_capabilities": [],
+          "kind": 2,
+          "transport": "Reliable"
+        }
+      ],
+      "schema": "PhysicalMonitorResult",
+      "type_id": 3382
+    },
+    {
+      "expected": {
+        "map": {
+          "1": {
+            "bytes": "00000000000000000000000000000000"
+          },
+          "2": {
+            "map": {
+              "1": {
+                "map": {
+                  "1": {
+                    "text": "ed25519"
+                  },
+                  "2": {
+                    "bytes": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                }
+              },
+              "2": {
+                "bytes": "00000000000000000000000000000000"
+              }
+            }
+          },
+          "3": {
+            "text": "synthetic"
+          },
+          "900": {
+            "map": {
+              "1": {
+                "uint": "18446744073709551615"
+              },
+              "2": {
+                "f32_bits": "3fa00000"
+              },
+              "3": {
+                "f64_bits": "c004000000000000"
+              },
+              "4": {
+                "list": [
+                  null,
+                  {
+                    "bytes": "00ff"
+                  },
+                  {
+                    "negative_argument": "18446744073709551615"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "file": "dto-PhysicalMonitorRequest.hex",
+      "kind": "dto",
+      "schema": "PhysicalMonitorRequest"
+    },
+    {
+      "expected": {
+        "map": {
+          "1": {
+            "bytes": "00000000000000000000000000000000"
+          },
+          "2": {
+            "map": {
+              "1": {
+                "map": {
+                  "1": {
+                    "text": "ed25519"
+                  },
+                  "2": {
+                    "bytes": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                }
+              },
+              "2": {
+                "bytes": "00000000000000000000000000000000"
+              }
+            }
+          },
+          "3": {
+            "text": "synthetic"
+          },
+          "900": {
+            "map": {
+              "1": {
+                "uint": "18446744073709551615"
+              },
+              "2": {
+                "f32_bits": "3fa00000"
+              },
+              "3": {
+                "f64_bits": "c004000000000000"
+              },
+              "4": {
+                "list": [
+                  null,
+                  {
+                    "bytes": "00ff"
+                  },
+                  {
+                    "negative_argument": "18446744073709551615"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "file": "dto-PhysicalMonitorResult.hex",
+      "kind": "dto",
+      "schema": "PhysicalMonitorResult"
     }
   ],
   "frozen": false,
@@ -84412,5 +84748,5 @@
     "reliable_frame": 16384
   },
   "revision": "2026-10-15-ui-freeze",
-  "schema_sha256": "a1c4faba4087c5675529c45a90e9ce496e547ef210477114381fca29d3a4fabc"
+  "schema_sha256": "2f257e36cbc2bc67b5c2a0fb7aeb6b0334e9f0884bd746350fc225090b5da0a1"
 }

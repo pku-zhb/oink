@@ -48,6 +48,7 @@
     "oink.layout.profiles/3",
     "oink.layout.topology/1",
     "oink.physical-monitors/1",
+    "oink.physical-monitors/2",
     "oink.audio.local-output/1",
     "oink.input.touchpad-options/1",
     "oink.input.scroll-pixels/1",
@@ -13136,6 +13137,84 @@
         ],
         "name": "ControlLockRemoteWindows"
       }
+    },
+    {
+      "capabilities": [
+        "oink.group/1",
+        "oink.physical-monitors/2"
+      ],
+      "id": 3381,
+      "name": "PhysicalMonitorRequest",
+      "pause": "Allow",
+      "routes": [
+        {
+          "extra_capabilities": [],
+          "kind": 2,
+          "transport": "Reliable"
+        }
+      ],
+      "schema": {
+        "fields": [
+          {
+            "absence": "required",
+            "key": 1,
+            "name": "request_id",
+            "shape": "Id16"
+          },
+          {
+            "absence": "required",
+            "key": 2,
+            "name": "target",
+            "shape": "Boot"
+          },
+          {
+            "absence": "required",
+            "key": 3,
+            "name": "body",
+            "shape": "Text<32768>"
+          }
+        ],
+        "name": "PhysicalMonitorRequest"
+      }
+    },
+    {
+      "capabilities": [
+        "oink.group/1",
+        "oink.physical-monitors/2"
+      ],
+      "id": 3382,
+      "name": "PhysicalMonitorResult",
+      "pause": "Allow",
+      "routes": [
+        {
+          "extra_capabilities": [],
+          "kind": 2,
+          "transport": "Reliable"
+        }
+      ],
+      "schema": {
+        "fields": [
+          {
+            "absence": "required",
+            "key": 1,
+            "name": "request_id",
+            "shape": "Id16"
+          },
+          {
+            "absence": "required",
+            "key": 2,
+            "name": "target",
+            "shape": "Boot"
+          },
+          {
+            "absence": "required",
+            "key": 3,
+            "name": "body",
+            "shape": "Text<32768>"
+          }
+        ],
+        "name": "PhysicalMonitorResult"
+      }
     }
   ],
   "open_enums": [
@@ -13955,6 +14034,52 @@
   ],
   "revision": "2026-10-15-ui-freeze",
   "schemas": [
+    {
+      "fields": [
+        {
+          "absence": "required",
+          "key": 1,
+          "name": "request_id",
+          "shape": "Id16"
+        },
+        {
+          "absence": "required",
+          "key": 2,
+          "name": "target",
+          "shape": "Boot"
+        },
+        {
+          "absence": "required",
+          "key": 3,
+          "name": "body",
+          "shape": "Text<32768>"
+        }
+      ],
+      "name": "PhysicalMonitorRequest"
+    },
+    {
+      "fields": [
+        {
+          "absence": "required",
+          "key": 1,
+          "name": "request_id",
+          "shape": "Id16"
+        },
+        {
+          "absence": "required",
+          "key": 2,
+          "name": "target",
+          "shape": "Boot"
+        },
+        {
+          "absence": "required",
+          "key": 3,
+          "name": "body",
+          "shape": "Text<32768>"
+        }
+      ],
+      "name": "PhysicalMonitorResult"
+    },
     {
       "fields": [
         {

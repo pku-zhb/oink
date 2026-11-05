@@ -4,89 +4,62 @@ import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { OinkProvider } from 'oink-ui';
 import { setLanguage } from '../i18n';
 import { PhysicalMonitors } from './PhysicalMonitors';
-const mocks = vi.hoisted(() => ({ call:vi.fn(), query:vi.fn(), state:{} as Record<string,unknown> }));
-vi.mock('../api/store', () => ({useAgent:()=>mocks.state,agent:{query:mocks.query}}));
-vi.mock('../api/client', () => ({call:mocks.call,api:{layout:vi.fn(),identifyScreens:vi.fn()}}));
-const key=(device:string,display:string)=>({device,display});
-const setup={revision:2,monitors:[
-  {name:'Left',controller_display:'ml',bindings:[{screen:key('mac','ml'),input:17},{screen:key('win','wl'),input:15}]},
-  {name:'Right',controller_display:'mr',bindings:[{screen:key('mac','mr'),input:17},{screen:key('win','wr'),input:8}]},
-]};
+import { presets, suggestPanels } from '../api/physicalDesktop';
+import type { DesktopState, Inspection, Panel } from '../api/physicalDesktop';
+
+const mocks=vi.hoisted(()=>({call:vi.fn(),query:vi.fn(),agent:{} as Record<string,unknown>,reply:{} as Record<string,unknown>}));
+vi.mock('../api/store',()=>({useAgent:()=>mocks.agent,agent:{query:mocks.query}}));
+vi.mock('../api/client',()=>({call:mocks.call,api:{layout:vi.fn(),identifyScreens:vi.fn()}}));
+const panels:Panel[]=['Left','Right'].map((name,i)=>({id:name,name,width:1,height:1,readback:true,baseline:'mac',calibrated:true,
+  endpoints:['mac','win'].map((device,j)=>({screen:{device,display:`${device}-${i}`},input:17+j,port:j?'HDMI 2':'HDMI 1'}))}));
+const initial=():DesktopState=>({mapping:{revision:1,group:'group',coordinator:'mac',panels},imported:null,active:[],mode:null,operation:null,has_entry:false,group:'group',cooldown_until:0,recovery:null});
 beforeAll(()=>{
   Object.defineProperty(window,'matchMedia',{value:()=>({matches:true,addEventListener(){},removeEventListener(){}})});
-  vi.stubGlobal('ResizeObserver',class{observe(){} unobserve(){} disconnect(){}});
+  vi.stubGlobal('ResizeObserver',class{observe(){}unobserve(){}disconnect(){}});
 });
 beforeEach(()=>{
-  vi.clearAllMocks(); setLanguage('en');
-  mocks.state={overview:{this_device:{id:'mac'}},layout:{geometry:{screens:[['mac','ml'],['mac','mr'],['win','wl'],['win','wr']].map(([device,display])=>({key:key(device,display),device_name:device==='mac'?'Mac':'Win',display:{name:display,is_virtual:false}}))}}};
-  mocks.call.mockResolvedValue({setup,active:[],controller_available:true});
-  mocks.query.mockResolvedValue(undefined);
+  vi.clearAllMocks();setLanguage('en');mocks.reply=initial() as unknown as Record<string,unknown>;
+  mocks.agent={overview:{this_device:{id:'mac',name:'Mac'}},cards:{cards:[{device:'mac',name:'Mac'},{device:'win',name:'Windows'}]}};
+  mocks.call.mockImplementation(async()=>mocks.reply);mocks.query.mockResolvedValue(undefined);
 });
 afterEach(cleanup);
-const view=()=> <OinkProvider defaultMotion="reduced"><PhysicalMonitors/></OinkProvider>;
-it('loads without changing inputs, and exposes all four physical ownership combinations',async()=>{
-  const result=render(view());
-  for(const label of ['Mac / Mac','Mac / Win','Win / Mac','Win / Win']) await result.findByRole('button',{name:label});
-  expect(mocks.call).toHaveBeenCalledExactlyOnceWith('physical_monitors',{command:{action:'query'}});
+const view=()=>render(<OinkProvider defaultMotion="reduced"><PhysicalMonitors/></OinkProvider>);
+it('loads read-only and exposes the four visual monitor assignments',async()=>{
+  const v=view();
+  for(const name of ['Mac / Mac','Mac / Windows','Windows / Mac','Windows / Windows']) await v.findByRole('button',{name});
+  expect(mocks.call.mock.calls.every(([,p])=>p.command.request.action==='status')).toBe(true);
 });
-it('switches the physical left and right screens in the selected order',async()=>{
-  const result=render(view());
-  fireEvent.click(await result.findByRole('button',{name:'Win / Mac'}));
-  await waitFor(()=>expect(mocks.call).toHaveBeenCalledWith('physical_monitors',{command:{action:'apply',expected_revision:2,screens:[key('win','wl'),key('mac','mr')]}}));
-  await result.findByText('Monitor inputs confirmed; physical layout applied');
-  expect(mocks.query).toHaveBeenCalledWith('layout',expect.any(Function));
+it('applies a calibrated scene with an explicit compatible desktop policy',async()=>{
+  const v=view();fireEvent.click(await v.findByRole('button',{name:'Windows / Mac'}));
+  await waitFor(()=>expect(mocks.call).toHaveBeenCalledWith('physical_monitors',{command:{action:'experience',request:{action:'apply',expected_revision:1,choices:[panels[0].endpoints[1].screen,panels[1].endpoints[0].screen],mode:'compatible',baseline_confirmed:false}}}));
 });
-it('reports a failed switch without claiming the scene was applied',async()=>{
-  mocks.call.mockImplementation((_method,params)=> params.command.action==='apply' ? Promise.resolve({error:'Input restoration needs attention'}) : Promise.resolve({setup,active:[],controller_available:true}));
-  const result=render(view());
-  fireEvent.click(await result.findByRole('button',{name:'Mac / Win'}));
-  expect((await result.findByRole('alert')).textContent).toContain('Input restoration needs attention');
-  expect(result.queryByText('Monitor inputs confirmed; physical layout applied')).toBeNull();
+it('confirms the exact pending operation rather than a generic keep action',async()=>{
+  mocks.reply={...initial(),operation:{id:'pending-7',phase:'awaiting_confirmation',detail:'',deadline_ms:Date.now()+15000,choices:[],mode:'complete',hardware_verified:false}};
+  const v=view();fireEvent.click(await v.findByRole('button',{name:'Keep layout'}));
+  await waitFor(()=>expect(mocks.call).toHaveBeenCalledWith('physical_monitors',{command:{action:'experience',request:{action:'keep',operation:'pending-7'}}}));
 });
-it('returns to ordinary routing without sending an input-source command',async()=>{
-  mocks.call.mockResolvedValueOnce({setup,active:[key('mac','ml'),key('win','wr')],controller_available:true});
-  const result=render(view());
-  fireEvent.click(await result.findByRole('button',{name:'Return to ordinary layout'}));
-  await waitFor(()=>expect(mocks.call).toHaveBeenCalledWith('physical_monitors',{command:{action:'clear'}}));
+it('retains per-monitor controls when the Cartesian product exceeds the preset limit',async()=>{
+  const many=Array.from({length:5},(_,i)=>({...panels[0],id:`p${i}`,name:`Monitor ${i}`}));
+  mocks.reply={...initial(),mapping:{...initial().mapping!,panels:many}};
+  expect(presets(many)).toEqual([]);
+  const v=view();await v.findByRole('button',{name:'Apply layout'});
+  for(const p of many) expect(await v.findByRole('combobox',{name:p.name})).toBeTruthy();
 });
-it('keeps computer names available when a scene hides all of one computer’s screens',async()=>{
-  mocks.state={...mocks.state,
-    cards:{cards:[{device:'mac',name:'Mac'},{device:'win',name:'Win'}]},
-    layout:{geometry:{screens:[{key:key('win','wl'),device_name:'Win',display:{name:'Left',is_virtual:false}}]}},
-  };
-  const result=render(view());
-  await result.findByRole('button',{name:'Mac / Mac'});
-  await result.findByRole('button',{name:'Win / Mac'});
+it('offers guided setup without running a monitor probe on entry',async()=>{
+  mocks.reply={...initial(),mapping:null};const v=view();
+  fireEvent.click(await v.findByRole('button',{name:'Set up shared monitors'}));
+  await v.findByRole('button',{name:'Check and continue'});
+  expect(mocks.call.mock.calls.every(([,p])=>p.command.request.action==='status')).toBe(true);
 });
-it('accepts a hexadecimal input value without discarding the typed prefix',async()=>{
-  const result=render(view());
-  const input=await result.findByRole('textbox',{name:'Left · Mac · Input value'});
-  fireEvent.change(input,{target:{value:'0x'}});
-  expect((input as HTMLInputElement).value).toBe('0x');
-  fireEvent.change(input,{target:{value:'0x12'}});
-  fireEvent.click(result.getByRole('button',{name:'Save bindings'}));
-  await waitFor(()=>expect(mocks.call).toHaveBeenCalledWith('physical_monitors',{command:expect.objectContaining({action:'save',monitors:expect.arrayContaining([
-    expect.objectContaining({name:'Left',bindings:expect.arrayContaining([{screen:key('mac','ml'),input:18}])}),
-  ])})}));
+it('reports backend failures without claiming that a scene was applied',async()=>{
+  mocks.call.mockImplementation(async(_method,p)=>p.command.request.action==='apply'?{error:'Native display configuration changed'}:mocks.reply);
+  const v=view();fireEvent.click(await v.findByRole('button',{name:'Mac / Windows'}));
+  expect((await v.findByRole('alert')).textContent).toContain('Native display configuration changed');
+  expect(v.queryByText('Layout applied')).toBeNull();
 });
-it('uses the visually confirmed baseline to test a monitor without readback',async()=>{
-  const calibrated={...setup,monitors:setup.monitors.map((m,i)=>i===0?{...m,readback:false,initial_input:17}:m)};
-  mocks.call.mockResolvedValue({setup:calibrated,active:[],controller_available:true});
-  const result=render(view());
-  await result.findByText('This mode sends commands using visually confirmed mappings. Confirm the current picture before first use or after manual input changes; actual inputs cannot be verified.');
-  expect((result.getAllByRole('button',{name:'Read current input'})[0] as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(result.getAllByRole('button',{name:'Test and restore'})[0]);
-  await waitFor(()=>expect(mocks.call).toHaveBeenCalledWith('physical_monitors',{command:{action:'test',controller_display:'ml',input:17,restore_input:17}}));
-  await result.findByText('Test and restore commands sent. Verify the picture visually; the monitor cannot confirm it by readback.');
-});
-it('requires a fresh picture confirmation before entering calibrated physical mode',async()=>{
-  const calibrated={...setup,monitors:setup.monitors.map((m,i)=>i===0?{...m,readback:false,initial_input:17}:m)};
-  mocks.call.mockResolvedValue({setup:calibrated,active:[],controller_available:true});
-  const result=render(view());
-  const scene=await result.findByRole('button',{name:'Mac / Win'});
-  expect((scene as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(result.getByRole('button',{name:'Save bindings and confirm current picture'}));
-  await waitFor(()=>expect((scene as HTMLButtonElement).disabled).toBe(false));
-  fireEvent.click(scene);
-  await waitFor(()=>expect(mocks.call).toHaveBeenCalledWith('physical_monitors',{command:{action:'apply',expected_revision:2,screens:[key('mac','ml'),key('win','wr')],confirmed_inputs:{ml:17}}}));
+it('does not auto-match indistinguishable monitors to one remote endpoint',()=>{
+  const display={key:'local',name:'Same',bounds:{x:0,y:0,w:1920,h:1080},pixel_width:1920,pixel_height:1080,rotation_deg:0,is_primary:true,is_builtin:false,is_virtual:false};
+  const local:Inspection={device:'mac',displays:[display],desktop_supported:true,ddc_supported:true,desktop_verified:false};
+  const remote:Inspection={...local,device:'win',displays:[{...display,key:'one'},{...display,key:'two'}]};
+  expect(suggestPanels(local,[remote])[0].endpoints).toHaveLength(1);
 });

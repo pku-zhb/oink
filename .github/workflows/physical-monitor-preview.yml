@@ -16,7 +16,7 @@ concurrency:
 jobs:
   windows:
     runs-on: windows-2022
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       CARGO_PROFILE_RELEASE_LTO: 'false'
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
@@ -34,6 +34,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run -w apps/oink build
+      - name: Test shared monitor UI and localization
+        run: npm run -w apps/oink test -- src/settings/PhysicalMonitors.test.tsx src/i18n/i18n.test.ts
+      - name: Test physical monitor transactions with fake hardware
+        run: cargo test --locked -p oink-agent --lib physical_monitors::
       - run: cargo build --release --locked -p oink-agent -p oink-ui -p oink-winsvc -p oink-crash --bins --features oink-ui/custom-protocol
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

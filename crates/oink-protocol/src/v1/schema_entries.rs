@@ -23,6 +23,7 @@ macro_rules! enum_schemas {
     };
 }
 dto_schemas! {
+    PhysicalMonitorRequest, PhysicalMonitorResult,
     ControlPowerState,
     CloudLinkRequest,CloudLinkOffer,CloudLinkUnavailable,CloudLinkList,CloudLinkSelect,CloudLinkRead,NativeFileMetadata,WindowsFileDescriptor,MacPromiseGroup,MacPromiseControl,FulfilledRoot,
     ApplicationFocusRecord, ApplicationFocusClaim, ApplicationFocusObservation, ApplicationFocusPrepare, ApplicationFocusApplied, ApplicationFocusSnapshot, ApplicationFocusRetire, ApplicationKeyRoute,

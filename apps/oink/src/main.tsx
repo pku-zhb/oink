@@ -5,9 +5,11 @@ import './app.css';
 import { App } from './App';
 import { agent, start } from './api/store';
 import { setLanguage } from './i18n';
-const preview=import.meta.env.DEV && new URLSearchParams(location.search).get('fixture')==='screen-groups';
-if(preview) {
+const fixture=import.meta.env.DEV ? new URLSearchParams(location.search).get('fixture') : null;
+if(fixture==='screen-groups') {
  void import('./arrange/GroupPreview').then(({GroupPreview})=>createRoot(document.getElementById('root')!).render(<StrictMode><GroupPreview/></StrictMode>));
+} else if(fixture==='physical-monitors') {
+ void import('./settings/PhysicalPreview').then(({PhysicalPreview})=>createRoot(document.getElementById('root')!).render(<StrictMode><PhysicalPreview/></StrictMode>));
 } else {
  // Resolve the route, platform and preferences before React's first render.
  // start() subscribes before querying, preserving events during initial load.

@@ -1436,6 +1436,8 @@ impl Owner {
             | Message::NotifyAction(_)
             | Message::NotifyDismiss(_)
             | Message::LayoutArrangementRequest(_)
+            | Message::PhysicalMonitorRequest(_)
+            | Message::PhysicalMonitorResult(_)
             | Message::LayoutArrangementResult(_) => {
                 if !self.sessions[&id].ready || !self.state.roster().contains(peer.device_id) {
                     return Err(v1::ErrorCode::NotReady.into());

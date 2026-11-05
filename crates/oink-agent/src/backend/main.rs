@@ -4,6 +4,9 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run() -> std::process::ExitCode {
+    if let Some(code) = oink_agent::physical_monitors::recovery::dispatch() {
+        return code;
+    }
     if let Err(error) = oink_foundation::process::initialize_priority() {
         eprintln!("Oink process priority initialization failed: {error}");
         return std::process::ExitCode::FAILURE;
