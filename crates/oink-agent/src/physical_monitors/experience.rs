@@ -34,6 +34,7 @@ type Pending = BTreeMap<
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
     Status,
+    Confirmation,
     Identify {
         device: DeviceKey,
         display: String,
@@ -143,6 +144,15 @@ pub struct Operation {
     pub choices: Vec<ScreenKey>,
     pub mode: Option<Mode>,
     pub hardware_verified: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Confirmation {
+    pub operation: String,
+    pub phase: String,
+    pub deadline_ms: u64,
+    pub bounds: Option<oink_foundation::Rect>,
+    pub previous_bounds: Option<oink_foundation::Rect>,
+    pub macos: bool,
 }
 impl Operation {
     pub(super) fn busy(&self) -> bool {
@@ -411,6 +421,21 @@ fn baseline_required(node: &Node, state: &Store) -> bool {
         .is_none_or(|c| expected.as_ref() != Some(&c.applied().layout.settings.physical_screens))
 }
 pub fn execute(node: &Node, request: Request) -> Result<serde_json::Value, String> {
+    if matches!(request, Request::Confirmation) {
+        let record = recovery::read(&recovery::path(node.data_dir()))?.or(lock(&node.inner.physical.local).clone());
+        let prompt = record
+            .filter(|r| group(node).ok().as_deref() == Some(r.group.as_str()))
+            .and_then(|r| r.confirmation)
+            .filter(|c| {
+                c.deadline_ms > recovery::now_ms()
+                    && (if c.phase == "pending" {
+                        c.bounds.is_some()
+                    } else {
+                        c.previous_bounds.is_some() || c.phase == "kept"
+                    })
+            });
+        return serde_json::to_value(prompt).map_err(|e| e.to_string());
+    }
     if let Request::Identify { device, display, label } = &request {
         return transport::request(
             node,
@@ -457,7 +482,14 @@ pub fn execute(node: &Node, request: Request) -> Result<serde_json::Value, Strin
         return status(node);
     }
     if let Request::Recovered { operation } = &request {
-        let record = recovery::read(&recovery::path(node.data_dir()))?.ok_or("Recovery record not found")?;
+        let _gate = node
+            .inner
+            .physical
+            .local_gate
+            .try_lock()
+            .map_err(|_| "The display owner is busy")?;
+        let _file_guard = recovery::guard(node.data_dir())?;
+        let mut record = recovery::read(&recovery::path(node.data_dir()))?.ok_or("Recovery record not found")?;
         if record.id != *operation || record.outcome.is_none() {
             return Err("Recovery has not completed".into());
         }
@@ -465,6 +497,18 @@ pub fn execute(node: &Node, request: Request) -> Result<serde_json::Value, Strin
             return Err("Recovery belongs to a different paired group".into());
         }
         set_route(node, record.route.clone())?;
+        if let Some(prompt) = record.confirmation.as_mut() {
+            prompt.phase = if record.outcome.as_ref().is_some_and(Result::is_ok) {
+                "reverted"
+            } else {
+                "error"
+            }
+            .into();
+            prompt.deadline_ms = recovery::now_ms() + 30_000;
+        }
+        recovery::write(&recovery::path(node.data_dir()), &record)?;
+        show_prompt(node, &record);
+        *lock(&node.inner.physical.local) = Some(record.clone());
         let mut current = store(node)?;
         current.active = record.previous_choices.clone();
         current.mode = record.previous_mode;
@@ -712,7 +756,8 @@ pub fn execute(node: &Node, request: Request) -> Result<serde_json::Value, Strin
             start(node, vec![], None, move |n, _operation| restore_session(n, &mapping))?;
             status(node)
         }
-        Request::Identify { .. }
+        Request::Confirmation
+        | Request::Identify { .. }
         | Request::Inspect { .. }
         | Request::Read { .. }
         | Request::RecoverLocal
@@ -987,6 +1032,15 @@ pub(super) fn receive(node: &Node, peer: DeviceKey, request: PeerRequest) -> Res
                 group: group(node)?,
                 previous_choices: store(node)?.active,
                 previous_mode: store(node)?.mode,
+                visible_displays: plan.visible.clone(),
+                prompt_displays: node
+                    .inner
+                    .display_backend
+                    .as_ref()
+                    .ok_or("Display backend unavailable")?
+                    .displays()
+                    .map_err(|e| e.to_string())?,
+                confirmation: None,
             };
             if old_entry.is_none() {
                 recovery::write(&root(node).join("entry-recovery.json"), &record)?;
@@ -1064,7 +1118,9 @@ pub(super) fn receive(node: &Node, peer: DeviceKey, request: PeerRequest) -> Res
                 return Err("Invalid confirmation deadline".into());
             }
             record.deadline_ms = deadline_ms;
+            record.confirmation = Some(make_confirmation(node, &record, "pending", deadline_ms)?);
             recovery::write(&recovery::path(node.data_dir()), &record)?;
+            show_prompt(node, &record);
             *lock(&node.inner.physical.local) = Some(record);
             Ok(serde_json::json!({"armed":true}))
         }
@@ -1077,8 +1133,13 @@ pub(super) fn receive(node: &Node, peer: DeviceKey, request: PeerRequest) -> Res
                 .try_lock()
                 .map_err(|_| "The display owner is busy")?;
             let _file_guard = recovery::guard(node.data_dir())?;
-            same_operation(node, &operation)?;
+            let mut record = same_operation(node, &operation)?;
+            if let Some(prompt) = record.confirmation.as_mut() {
+                prompt.phase = "kept".into();
+                prompt.deadline_ms = recovery::now_ms() + 30_000;
+            }
             std::fs::remove_file(recovery::path(node.data_dir())).map_err(|e| e.to_string())?;
+            *lock(&node.inner.physical.local) = Some(record);
             Ok(serde_json::json!({"confirmed":true}))
         }
         PeerRequest::Rollback { operation } => {
@@ -1102,7 +1163,12 @@ pub(super) fn receive(node: &Node, peer: DeviceKey, request: PeerRequest) -> Res
                 restore_record(node, &record)
             };
             record.outcome = Some(outcome.clone());
+            if let Some(prompt) = record.confirmation.as_mut() {
+                prompt.phase = if outcome.is_ok() { "reverted" } else { "error" }.into();
+                prompt.deadline_ms = recovery::now_ms() + 30_000;
+            }
             recovery::write(&recovery::path(node.data_dir()), &record)?;
+            show_prompt(node, &record);
             *lock(&node.inner.physical.local) = Some(record);
             outcome?;
             Ok(serde_json::json!({"restored":true}))
@@ -1116,8 +1182,17 @@ pub(super) fn receive(node: &Node, peer: DeviceKey, request: PeerRequest) -> Res
                 .try_lock()
                 .map_err(|_| "The display owner is busy")?;
             let _file_guard = recovery::guard(node.data_dir())?;
-            if let Some(record) = entry(node)? {
+            let mut restored_prompt = None;
+            if let Some(mut record) = entry(node)? {
                 restore_record(node, &record)?;
+                record.confirmation = Some(make_confirmation(
+                    node,
+                    &record,
+                    "reverted",
+                    recovery::now_ms() + 30_000,
+                )?);
+                record.outcome = Some(Ok(()));
+                restored_prompt = Some(record);
                 std::fs::remove_file(root(node).join("entry-recovery.json")).map_err(|e| e.to_string())?;
             }
             if recovery::path(node.data_dir()).exists() {
@@ -1127,11 +1202,69 @@ pub(super) fn receive(node: &Node, peer: DeviceKey, request: PeerRequest) -> Res
             current.active.clear();
             current.mode = None;
             persist(node, current)?;
+            if let Some(record) = restored_prompt {
+                *lock(&node.inner.physical.local) = Some(record.clone());
+                show_prompt(node, &record);
+            }
             Ok(serde_json::json!({"restored":true}))
         }
     }
 }
 
+fn make_confirmation(node: &Node, record: &Record, phase: &str, deadline_ms: u64) -> Result<Confirmation, String> {
+    let mapping = require_mapping(node)?;
+    let previous = if record.previous_choices.is_empty() {
+        mapping.baseline_choices()
+    } else {
+        record.previous_choices.clone()
+    };
+    let previous_bounds = previous.iter().filter(|s| s.device.0 == node.id()).find_map(|s| {
+        record
+            .prompt_displays
+            .iter()
+            .find(|d| d.key == s.display)
+            .map(|d| d.bounds)
+    });
+    let bounds = if phase == "pending" && !record.visible_displays.is_empty() {
+        let displays = node
+            .inner
+            .display_backend
+            .as_ref()
+            .ok_or("Display backend unavailable")?
+            .displays()
+            .map_err(|e| e.to_string())?;
+        Some(
+            record
+                .visible_displays
+                .iter()
+                .find_map(|key| displays.iter().find(|d| &d.key == key).map(|d| d.bounds))
+                .ok_or("No assigned display is available for layout confirmation")?,
+        )
+    } else {
+        None
+    };
+    Ok(Confirmation {
+        operation: record.id.clone(),
+        phase: phase.into(),
+        deadline_ms,
+        bounds,
+        previous_bounds,
+        macos: cfg!(target_os = "macos"),
+    })
+}
+fn show_prompt(node: &Node, record: &Record) {
+    if node.native_services_enabled()
+        && record.confirmation.as_ref().is_some_and(|c| {
+            if c.phase == "pending" {
+                c.bounds.is_some()
+            } else {
+                c.phase != "kept" && c.previous_bounds.is_some()
+            }
+        })
+    {
+        node.emit(crate::api::ApiEvent::ShowWindow);
+    }
+}
 fn set_route(node: &Node, route: Vec<oink_display::layout::PhysicalScreen>) -> Result<(), String> {
     let started = std::time::Instant::now();
     loop {
@@ -1283,6 +1416,14 @@ fn apply(node: &Node, operation: String, mapping: Mapping, choices: Vec<ScreenKe
         #[cfg(not(test))]
         let confirmation = CONFIRM_MS;
         let deadline = recovery::now_ms() + confirmation;
+        let (tx, rx) = mpsc::channel();
+        *lock(&node.inner.physical.decision) = Some((operation.clone(), tx));
+        phase(
+            node,
+            "awaiting_confirmation",
+            "Keep this layout or it will automatically return",
+            Some(deadline),
+        );
         for peer in &peers {
             transport::request(
                 node,
@@ -1293,14 +1434,6 @@ fn apply(node: &Node, operation: String, mapping: Mapping, choices: Vec<ScreenKe
                 },
             )?;
         }
-        let (tx, rx) = mpsc::channel();
-        *lock(&node.inner.physical.decision) = Some((operation.clone(), tx));
-        phase(
-            node,
-            "awaiting_confirmation",
-            "Keep this layout or it will automatically return",
-            Some(deadline),
-        );
         if !rx
             .recv_timeout(Duration::from_millis(deadline.saturating_sub(recovery::now_ms())))
             .unwrap_or(false)
@@ -1447,6 +1580,14 @@ fn calibrate(node: &Node, operation: String, panel: Panel, target: DeviceKey) ->
     {
         return Err("Choose a connected external physical display".into());
     }
+    let target_state = transport::request(node, target, PeerRequest::Inspect)?;
+    if !target_state["displays"].as_array().is_some_and(|displays| {
+        displays
+            .iter()
+            .any(|d| d["key"].as_str() == Some(selected.screen.display.as_str()))
+    }) {
+        return Err("The target computer does not currently detect this display".into());
+    }
     if busy_entry(node)? {
         return Err("Restore the active physical layout before calibrating".into());
     }
@@ -1457,7 +1598,7 @@ fn calibrate(node: &Node, operation: String, panel: Panel, target: DeviceKey) ->
     };
     let record = Record {
         id: operation,
-        deadline_ms: recovery::now_ms() + 20_000,
+        deadline_ms: recovery::now_ms() + 30_000,
         desktop: None,
         inputs: vec![recovery::Input {
             display: controller.screen.display.clone(),
@@ -1471,13 +1612,19 @@ fn calibrate(node: &Node, operation: String, panel: Panel, target: DeviceKey) ->
         group: group(node)?,
         previous_choices: store(node)?.active,
         previous_mode: store(node)?.mode,
+        visible_displays: vec![],
+        prompt_displays: vec![],
+        confirmation: None,
     };
     recovery::write(&recovery::path(node.data_dir()), &record)?;
     if node.native_services_enabled() {
         recovery::spawn(&recovery::path(node.data_dir()))?;
     }
     let result: Result<(), String> = (|| {
-        hardware(node).write(&controller.screen.display, selected.input, panel.readback)?;
+        {
+            let _guard = recovery::guard(node.data_dir())?;
+            hardware(node).write(&controller.screen.display, selected.input, panel.readback)?;
+        }
         transport::request(
             node,
             target,

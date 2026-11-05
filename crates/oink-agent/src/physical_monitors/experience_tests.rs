@@ -164,7 +164,7 @@ fn mapping(a: &Node, b: &Node) -> Mapping {
                 width: 1.0,
                 height: 1.0,
                 readback: false,
-                baseline: a.id().into(),
+                baseline: if name == "right" { b.id().into() } else { a.id().into() },
                 calibrated: true,
                 endpoints: vec![
                     Endpoint {
@@ -199,6 +199,8 @@ fn authenticated_desktop_transactions_and_recovery() {
         let b = node(dir.path().join("b"), "b", hb.clone()).await;
         pair(&a, &b).await;
         active(&a, &b).await;
+        lock(&ha.inputs).insert("right-a".into(), 18);
+        lock(&hb.inputs).insert("right-b".into(), 18);
         let m = mapping(&a, &b);
         // A local storage failure must not strand a newer mapping on a peer.
         store(&a).unwrap();
@@ -255,6 +257,18 @@ fn authenticated_desktop_transactions_and_recovery() {
         .await
         .unwrap();
         await_phase(&a, "awaiting_confirmation").await;
+        until("visible peer has armed its local confirmation", || {
+            super::recovery::read(&super::recovery::path(b.data_dir()))
+                .ok()
+                .flatten()
+                .is_some_and(|r| r.confirmation.is_some())
+        })
+        .await;
+        let prompt = invoke(&b, Request::Confirmation).await.unwrap();
+        assert_eq!(prompt["phase"], "pending");
+        assert_eq!(prompt["bounds"]["x"], 0.0);
+        assert_eq!(prompt["previous_bounds"]["x"], 100.0);
+
         assert_eq!(lock(&ha.displays).len(), 1);
         assert_eq!(lock(&hb.displays).len(), 1);
         assert!(lock(&hb.displays)[0].is_primary);
@@ -319,7 +333,7 @@ fn authenticated_desktop_transactions_and_recovery() {
         await_phase(&a, "reverted").await;
         assert_eq!(*lock(&ha.displays), ha.original);
         assert_eq!(*lock(&hb.displays), hb.original);
-        assert_eq!(ha.read("right-a"), Ok(17));
+        assert_eq!(ha.read("right-a"), Ok(18));
         assert!(store(&a).unwrap().active.is_empty());
         hb.fail_apply.store(false, Ordering::Relaxed);
         invoke(&a, Request::Restore).await.unwrap();
@@ -355,7 +369,7 @@ fn authenticated_desktop_transactions_and_recovery() {
         // usable in explicit compatible mode, without disconnecting its last screen.
         *lock(&a.inner.physical.cooldown) = 0;
         a.inner.physical.confirm_ms.store(0, Ordering::Relaxed);
-        let both = saved.panels.iter().map(|p| p.endpoints[0].screen.clone()).collect();
+        let both = saved.panels.iter().map(|p| p.endpoints[1].screen.clone()).collect();
         invoke(
             &a,
             Request::Apply {
@@ -368,6 +382,16 @@ fn authenticated_desktop_transactions_and_recovery() {
         .await
         .unwrap();
         await_phase(&a, "awaiting_confirmation").await;
+        until("headless coordinator has a visible peer prompt", || {
+            super::recovery::read(&super::recovery::path(b.data_dir()))
+                .ok()
+                .flatten()
+                .is_some_and(|r| r.confirmation.is_some())
+        })
+        .await;
+        assert!(invoke(&a, Request::Confirmation).await.unwrap().is_null());
+        assert_eq!(invoke(&b, Request::Confirmation).await.unwrap()["phase"], "pending");
+
         let op = lock(&a.inner.physical.operation).clone().unwrap().id;
         invoke(&b, Request::Revert { operation: op }).await.unwrap();
         await_phase(&a, "reverted").await;

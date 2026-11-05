@@ -14,6 +14,8 @@ Compatible mode switches monitor inputs and Oink routing while retaining system 
 
 Applied changes require confirmation within fifteen seconds. Any visible participant can keep or revert the pending operation, including when the coordinating computer has no visible assigned panel. Restore configuration before switching returns to the saved entry state, rather than only clearing Oink routing. If the coordinator is offline, local recovery restores only the requesting computer and reports that limitation.
 
+The confirmation is global to the main window, not tied to an open settings page. A visible participant opens its main window and places the prompt on an assigned display using that computer's native coordinate units. Reverting returns the window to a previously visible display when available. A temporary always-on-top state is restored when the prompt ends. Windows foreground restrictions remain in force; the workflow does not borrow the backend's UIAccess foreground grant. These native placement behaviors still require actual desktop acceptance.
+
 ## Ownership and state
 
 `physical_monitors/model.rs` defines stable physical panel identities, endpoint bindings, horizontal visible rectangles, and scoped native plans. System display keys remain owned by their computers and are not used as global physical identities. The mapping is persisted on participants, versioned at its fixed coordinator, and checked against the current paired group. Saving performs no hardware writes; a failed save compensates copies already written to peers.

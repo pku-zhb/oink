@@ -1146,4 +1146,7 @@ export const en = {
   "重新配置屏幕": "Reconfigure monitors",
   "请等待显示器稳定后再切换": "Wait for the monitors to settle before switching again",
   "恢复测试前输入": "Restore input before the test",
+  "保留这个显示布局？": "Keep this display layout?",
+  "正在确认布局": "Confirming layout",
+  "请先恢复切换前配置，再尝试新的布局。": "Restore the saved configuration before trying another layout.",
 } as const satisfies Record<string, Message>;

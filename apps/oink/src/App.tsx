@@ -50,6 +50,7 @@ import { PairDialog } from './pairing/PairDialog';
 import { usePairing } from './pairing/usePairing';
 import { SettingsNav } from './settings/SettingsNav';
 import { SettingsPage, type SettingsJump, type PermState } from './settings/SettingsPage';
+import { PhysicalConfirmation } from './settings/PhysicalConfirmation';
 import { BlockListDialog } from './settings/BlockListDialog';
 import { usePreferences } from './settings/model';
 import { DEFAULT_ACCENT } from './settings/appearance';
@@ -705,6 +706,7 @@ export function App() {
       {body}{view === 'main' && !maximized && <ResizeEdges platform={platform}/>}{(view==='main'||view==='panel')&&!packageDrag&&<StatusNotices/>}
       {winEl && <>{!onboarding && <PairDialog pairing={pairing} container={winEl}/>}<BlockListDialog loading={state.blocked === null} pending={unblocking} error={blockError} open={blockedOpen} blocked={pairing.blocked} container={winEl} onClose={() => setBlockedOpen(false)} onRemove={p => { setBlockError(null); setUnblocking(ids => [...ids,p.id]); void pairing.actions.unblock(p).catch(() => setBlockError(problemText('unavailable'))).finally(() => setUnblocking(ids => ids.filter(id => id !== p.id))); }}/>
         {view === 'main' && <UpgradeDialog container={winEl}/>}
+        {view === 'main' && <PhysicalConfirmation container={winEl}/>}
         {view === 'main' && <CreateProfileDialog open={createOpen} state={profiles} container={winEl} onClose={() => setCreateOpen(false)} onSubmit={createProfile}/>}
         <FileProviderDialog {...fileProvider.dialog} container={winEl}/>
         <QuitDialog pendingOperations={[...controlTargets.values()].reduce((count,actions)=>count+actions.length,0)} open={quitAsk} container={winEl} onCancel={() => setQuitAsk(false)} onQuit={() => { void shell.quit().catch(fail); }}/>

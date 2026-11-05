@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "physical-monitor-confirmation",
+  "description": "Place a pending display confirmation on a visible assigned monitor in the main window",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:window:allow-set-position",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-is-always-on-top",
+    "core:window:allow-unmaximize",
+    "core:window:allow-unminimize",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-outer-size",
+    "core:window:allow-scale-factor"
+  ]
+}

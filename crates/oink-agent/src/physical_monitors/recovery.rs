@@ -39,6 +39,12 @@ pub struct Record {
     pub previous_choices: Vec<crate::api::ScreenKey>,
     #[serde(default)]
     pub previous_mode: Option<super::model::Mode>,
+    #[serde(default)]
+    pub visible_displays: Vec<String>,
+    #[serde(default)]
+    pub prompt_displays: Vec<oink_foundation::display::DisplayInfo>,
+    #[serde(default)]
+    pub confirmation: Option<super::experience::Confirmation>,
 }
 pub(super) fn path(root: &Path) -> PathBuf {
     root.join("physical-monitors").join("recovery.json")
@@ -137,6 +143,30 @@ pub(super) fn spawn(path: &Path) -> Result<(), String> {
         return Ok(());
     }
     let mut command = std::process::Command::new(std::env::current_exe().map_err(|e| e.to_string())?);
+    command.env_clear();
+    for key in [
+        "PATH",
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "LANG",
+        "LC_CTYPE",
+        "TMPDIR",
+        "__CF_USER_TEXT_ENCODING",
+        "SystemRoot",
+        "WINDIR",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "TEMP",
+        "TMP",
+        "HOMEDRIVE",
+        "HOMEPATH",
+    ] {
+        if let Some(value) = std::env::var_os(key) {
+            command.env(key, value);
+        }
+    }
     command
         .arg("--physical-monitor-recovery")
         .arg(path)
@@ -197,6 +227,15 @@ pub fn dispatch() -> Option<std::process::ExitCode> {
             }
             if now_ms() >= current.deadline_ms {
                 current.outcome = Some(restore(&current));
+                if let Some(prompt) = current.confirmation.as_mut() {
+                    prompt.phase = if current.outcome.as_ref().is_some_and(Result::is_ok) {
+                        "reverted"
+                    } else {
+                        "error"
+                    }
+                    .into();
+                    prompt.deadline_ms = now_ms() + 30_000;
+                }
                 write(&path, &current)?;
                 drop(file_guard);
                 use crate::api::AgentApi;
@@ -260,6 +299,9 @@ mod tests {
             outcome: None,
             ready: false,
             helper_pid: None,
+            visible_displays: vec![],
+            prompt_displays: vec![],
+            confirmation: None,
             group: String::new(),
             previous_choices: vec![],
             previous_mode: None,

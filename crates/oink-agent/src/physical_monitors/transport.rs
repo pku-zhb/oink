@@ -11,6 +11,18 @@ use oink_protocol::v1::{
 use std::{sync::mpsc, time::Duration};
 
 pub(super) fn request(node: &Node, peer: DeviceKey, request: PeerRequest) -> Result<serde_json::Value, String> {
+    let timeout = match &request {
+        PeerRequest::Inspect | PeerRequest::Identify { .. } | PeerRequest::Read { .. } => Duration::from_secs(8),
+        PeerRequest::Client { request }
+            if matches!(
+                **request,
+                experience::Request::Status | experience::Request::Keep { .. } | experience::Request::Revert { .. }
+            ) =>
+        {
+            Duration::from_secs(5)
+        }
+        _ => Duration::from_secs(35),
+    };
     if peer.0 == node.id() {
         return experience::receive(node, node.id().into(), request);
     }
@@ -41,7 +53,7 @@ pub(super) fn request(node: &Node, peer: DeviceKey, request: PeerRequest) -> Res
         config
             .send_device_control(peer.0, Message::PhysicalMonitorRequest(wire))
             .map_err(|e| e.message().to_string())?;
-        rx.recv_timeout(Duration::from_secs(35))
+        rx.recv_timeout(timeout)
             .map_err(|_| "The computer did not answer; its local recovery guard remains armed".to_string())?
     })();
     lock(&node.inner.physical.pending).remove(&(peer, id));

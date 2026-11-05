@@ -37,7 +37,7 @@ jobs:
       - run: npm ci
       - run: npm run -w apps/oink build
       - name: Test shared monitor UI and localization
-        run: npm run -w apps/oink test -- src/settings/PhysicalMonitors.test.tsx src/i18n/i18n.test.ts
+        run: npm run -w apps/oink test -- src/settings/PhysicalMonitors.test.tsx src/settings/PhysicalConfirmation.test.tsx src/i18n/i18n.test.ts
       - name: Test physical monitor transactions with fake hardware
         run: >-
           cargo test --locked -p oink-agent --lib physical_monitors::

@@ -16,8 +16,13 @@ export interface NativeDisplay {
   reference_extent?: { w: number; h: number } | null; is_primary: boolean; is_builtin: boolean; is_virtual: boolean;
 }
 export interface Inspection { device: string; displays: NativeDisplay[]; desktop_supported: boolean; ddc_supported: boolean; desktop_verified: boolean }
+export interface Confirmation {
+  operation: string; phase: 'pending' | 'kept' | 'reverted' | 'error'; deadline_ms: number;
+  bounds: {x:number;y:number;w:number;h:number} | null;
+  previous_bounds: {x:number;y:number;w:number;h:number} | null; macos: boolean;
+}
 export type DesktopRequest =
-  | { action: 'status' | 'restore' | 'recover_local' }
+  | { action: 'status' | 'restore' | 'recover_local' | 'confirmation' }
   | { action: 'identify'; device: string; display: string; label: string }
   | { action: 'inspect'; device: string }
   | { action: 'read'; device: string; display: string }
