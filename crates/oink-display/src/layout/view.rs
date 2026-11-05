@@ -41,9 +41,12 @@ impl Layout {
         owners: &std::collections::BTreeMap<DeviceId, OwnerLayoutPreferences>,
         online: impl Fn(&DeviceId) -> bool,
     ) -> LayoutView {
-        let screens: Vec<ScreenView> = self
-            .screens
+        let effective = self.effective(owners);
+        let physical = !self.settings.physical_screens.is_empty();
+        let screens: Vec<ScreenView> = effective
+            .screens()
             .iter()
+            .filter(|s| !physical || s.enabled)
             .filter(|s| s.is_valid())
             .map(|s| ScreenView {
                 id: s.id.clone(),
@@ -52,7 +55,7 @@ impl Layout {
                 rect: s.rect,
                 primary: s.primary,
                 builtin: s.builtin,
-                enabled: owners.get(&s.id.device).cloned().unwrap_or_default().screen(s).enabled,
+                enabled: s.enabled,
                 online: online(&s.id.device),
             })
             .collect();

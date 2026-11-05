@@ -401,6 +401,93 @@ fn hiding_current_screen_preserves_focus_position_and_native_cursor() {
 }
 
 #[test]
+fn physical_scene_moves_local_focus_off_the_inactive_native_screen() {
+    let mut displays = vec![display(), display()];
+    displays[0].key = "left".into();
+    displays[0].is_primary = true;
+    displays[1].key = "right".into();
+    displays[1].bounds.x = displays[0].bounds.w;
+    displays[1].is_primary = false;
+    let mut saved = Layout::auto(&[(ME, displays.clone()), (PEER, vec![display()])]);
+    let selected = saved.screen(&oink_display::layout::ScreenId::new(ME, "right")).unwrap();
+    saved.settings.physical_screens = vec![oink_display::layout::PhysicalScreen {
+        device: ME.to_hex(),
+        display: "right".into(),
+        rect: selected.rect,
+    }];
+    let mut r = router();
+    r.set_local_displays(displays);
+    r.set_cursor(Point::new(30., 40.));
+    r.set_layout(Arc::new(TopologyLayout::from_layout(&saved, &Default::default())));
+    assert_eq!(r.pointer.as_ref().unwrap().screen.display, "right");
+    assert!(
+        r.drain_outputs()
+            .iter()
+            .any(|o| matches!(o, Output::Inject(InjectEvent::MoveTo {pos}) if pos.x >= 1000.))
+    );
+}
+
+#[test]
+fn physical_scene_redirects_a_computer_without_any_visible_monitor() {
+    let mut r = router();
+    r.set_cursor(Point::new(30., 40.));
+    let mut saved = layout();
+    let peer = saved
+        .screen(&oink_display::layout::ScreenId::new(PEER, "screen"))
+        .unwrap();
+    saved.settings.physical_screens = vec![oink_display::layout::PhysicalScreen {
+        device: PEER.to_hex(),
+        display: "screen".into(),
+        rect: peer.rect,
+    }];
+    r.set_layout(Arc::new(TopologyLayout::from_layout(&saved, &Default::default())));
+    assert_eq!(r.focus().holder, PEER);
+}
+
+#[test]
+fn physical_scenes_cross_both_directions_instead_of_entering_the_invisible_native_neighbour() {
+    for local_on_left in [true, false] {
+        let mut displays = vec![display(), display()];
+        displays[0].key = "left".into();
+        displays[0].is_primary = true;
+        displays[1].key = "right".into();
+        displays[1].is_primary = false;
+        let width = displays[0].bounds.w;
+        displays[1].bounds.x = width;
+        let mut saved = Layout::auto(&[(ME, displays.clone()), (PEER, displays.clone())]);
+        saved.settings.physical_screens = vec![
+            oink_display::layout::PhysicalScreen {
+                device: if local_on_left { ME } else { PEER }.to_hex(),
+                display: "left".into(),
+                rect: Rect::new(0., 0., 1., 1.),
+            },
+            oink_display::layout::PhysicalScreen {
+                device: if local_on_left { PEER } else { ME }.to_hex(),
+                display: "right".into(),
+                rect: Rect::new(1., 0., 1., 1.),
+            },
+        ];
+        let mut r = router();
+        r.set_local_displays(displays.clone());
+        r.set_peer_displays(PEER, displays);
+        let (x, dx) = if local_on_left {
+            (width - 10., 20.)
+        } else {
+            (width + 10., -20.)
+        };
+        r.set_cursor(Point::new(x, 40.));
+        r.set_layout(Arc::new(TopologyLayout::from_layout(&saved, &Default::default())));
+        r.drain_outputs();
+        assert_eq!(
+            r.local_motion(dx, 0., Some(Point::new(x + dx, 40.)), 100),
+            Disposition::Swallow
+        );
+        assert_eq!(r.focus().holder, PEER);
+        assert!(r.drain_outputs().iter().any(|o| matches!(o, Output::Send { to, msg: Message::Control(ControlMsg::FocusEnter { display, .. }), .. } if *to == PEER && display == if local_on_left { "right" } else { "left" })));
+    }
+}
+
+#[test]
 fn hidden_native_seam_blocks_both_directions_in_shared_and_local_mouse_modes() {
     use oink_display::layout::{OwnerLayoutPreferences, ScreenPreference};
     use oink_foundation::input::InputMode;

@@ -9,6 +9,7 @@ import type { ReceivedFilesCleanup } from '../api/types';
 import { api as backend, shell } from '../api/client';
 import { agent, useAgent } from '../api/store';
 import { MicrophoneInput } from './MicrophoneInput';
+import { PhysicalMonitors } from './PhysicalMonitors';
 import { ScreenPointerGains } from './ScreenPointerGains';
 import { VirtualMicrophoneDescription, VirtualMicrophone, MicrophonePermission } from './VirtualMicrophone';
 import { GainControl } from './GainControl';
@@ -282,6 +283,8 @@ export function SettingsPage({ open, platform, api, capsIme, query, jump, onActi
                     node: <Switch aria-label={label} checked={arrangement?.sync_system_arrangement ?? false} disabled={!ready || syncPending} onChange={v => { void setSync(v, label); }}/>,
                 };
             }
+            case 'physicalMonitors':
+                return { node: <PhysicalMonitors/>, stack: true };
             case 'manageLayouts':
                 return { node: layoutProfiles ?? null, stack: true };
             case 'receivedFiles': return {node:<>

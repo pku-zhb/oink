@@ -803,6 +803,11 @@ fn check_size(s: Size) -> ApiResult<()> {
 }
 
 impl AgentApi for Node {
+    fn physical_monitors(&self, command: crate::physical_monitors::Command) -> ApiResult<serde_json::Value> {
+        Ok(crate::physical_monitors::execute(self, command)
+            .unwrap_or_else(|e| serde_json::json!({"error":e.message()})))
+    }
+
     fn layout_profile_command(&self, command: crate::layout_profiles::types::Command) -> ApiResult<serde_json::Value> {
         Ok(Node::layout_profile_command(self, command))
     }

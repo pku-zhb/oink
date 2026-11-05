@@ -106,14 +106,19 @@ pub fn read_native(v: d::LayoutProfileNative) -> v1::Result<NativeState> {
     })
 }
 fn topology(v: &LayoutSettings) -> V {
-    map([
-        (6, v.gap_travel.write()),
-        (7, v.overlap_tolerance.write()),
-        (8, v.minimum_portal.write()),
-        (9, v.portal_snap.write()),
-        (10, v.walls.write()),
-        (12, v.endpoint_reach.write()),
-    ])
+    V::Map(
+        [
+            (6, v.gap_travel.write()),
+            (7, v.overlap_tolerance.write()),
+            (8, v.minimum_portal.write()),
+            (9, v.portal_snap.write()),
+            (10, v.walls.write()),
+            (12, v.endpoint_reach.write()),
+        ]
+        .into_iter()
+        .chain(crate::config_module::layout_wire::physical_field(v))
+        .collect(),
+    )
 }
 pub fn disabled(v: &Disabled) -> V {
     map([(1, screen(&v.screen)), (2, v.disabled.write())])
@@ -187,6 +192,7 @@ pub(crate) fn read_snapshot(v: d::LayoutProfileSnapshot, active: &str) -> v1::Re
             .collect::<v1::Result<_>>()?,
         native: v.native()?.0.into_iter().map(read_native).collect::<v1::Result<_>>()?,
         topology: LayoutSettings {
+            physical_screens: crate::config_module::layout_wire::read_physical(t.physical_screens()?)?,
             gap_travel: t.gap_travel()?,
             overlap_tolerance: t.overlap_tolerance()?,
             minimum_portal: t.minimum_portal()?,

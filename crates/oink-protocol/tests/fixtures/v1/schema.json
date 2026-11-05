@@ -47,6 +47,7 @@
     "oink.layout.profiles/2",
     "oink.layout.profiles/3",
     "oink.layout.topology/1",
+    "oink.physical-monitors/1",
     "oink.audio.local-output/1",
     "oink.input.touchpad-options/1",
     "oink.input.scroll-pixels/1",
@@ -27984,6 +27985,12 @@
           "key": 12,
           "name": "endpoint_reach",
           "shape": "f64"
+        },
+        {
+          "absence": "optional",
+          "key": 13,
+          "name": "physical_screens",
+          "shape": "Option<Text<32768>>"
         }
       ],
       "name": "TopologySettings"

@@ -53,6 +53,7 @@ pub fn from_wire(value: &dto::LayoutValue) -> v1::Result<Layout> {
     Ok(Layout {
         screens,
         settings: LayoutSettings {
+            physical_screens: read_physical(st.physical_screens()?)?,
             gap_travel: st.gap_travel()?,
             overlap_tolerance: st.overlap_tolerance()?,
             minimum_portal: st.minimum_portal()?,
@@ -154,7 +155,9 @@ pub fn to_wire(layout: &Layout, source: dto::LayoutSource) -> v1::Result<dto::La
                         (10, s.walls.write()),
                         (12, s.endpoint_reach.write()),
                     ]
-                    .into(),
+                    .into_iter()
+                    .chain(physical_field(s))
+                    .collect(),
                 ),
             ),
         ]
@@ -464,6 +467,27 @@ pub fn patch(current: &mut RawMap, before: &dto::LayoutValue, after: &dto::Layou
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn physical_ownership_roundtrips_without_changing_native_screen_coordinates() {
+        let me = DeviceId([7; 32]);
+        let mut layout = Layout::auto(&[(me, vec![display("left", 0., 0.), display("right", 1920., 0.)])]);
+        let ordinary = to_wire(&layout, dto::LayoutSource::Manual).unwrap();
+        assert!(!ordinary.topology().unwrap().raw().contains_key(&13));
+        layout.settings.physical_screens = vec![oink_display::layout::PhysicalScreen {
+            device: me.to_hex(),
+            display: "right".into(),
+            rect: Rect::new(0., 0., 1., 1.),
+        }];
+        let encoded = to_wire(&layout, dto::LayoutSource::Manual).unwrap();
+        assert_eq!(from_wire(&encoded).unwrap(), layout);
+        let mut malformed = encoded.raw().clone();
+        let RawValue::Map(topology) = malformed.get_mut(&4).unwrap() else {
+            panic!()
+        };
+        topology.insert(13, RawValue::from("[{\"device\":\"invalid\"}]"));
+        assert!(from_wire(&dto::LayoutValue::from_raw(malformed).unwrap()).is_err());
+    }
 
     #[test]
     fn hotplug_preserves_owner_and_noncolliders_in_recorded_three_computer_layout() {
@@ -777,4 +801,30 @@ mod tests {
         assert_eq!(effective.screens()[1].rect, b.rect);
         assert!(!effective.screens()[1].enabled);
     }
+}
+
+/// Fork extension is absent in ordinary layouts, so their wire form stays unchanged.
+pub(crate) fn physical_field(s: &LayoutSettings) -> Option<(u32, RawValue)> {
+    (!s.physical_screens.is_empty()).then(|| {
+        (
+            13,
+            RawValue::from(
+                serde_json::to_string(&s.physical_screens)
+                    .expect("validated physical screens")
+                    .as_str(),
+            ),
+        )
+    })
+}
+pub(crate) fn read_physical(
+    value: Option<oink_protocol::v1::schema::Text<32768>>,
+) -> v1::Result<Vec<oink_display::layout::PhysicalScreen>> {
+    let screens = match value {
+        None => Vec::new(),
+        Some(text) => serde_json::from_str(&text.0).map_err(|_| ErrorCode::UnsupportedValue)?,
+    };
+    if !oink_display::layout::valid_physical_screens(&screens) {
+        return Err(ErrorCode::UnsupportedValue.into());
+    }
+    Ok(screens)
 }

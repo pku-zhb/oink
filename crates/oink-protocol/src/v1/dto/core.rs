@@ -286,6 +286,7 @@ wire_map!(TopologySettings, validate_topology, {
     9 => portal_snap: f64 = (8.0 / 686.0);
     10 => walls: bool = true;
     12 => endpoint_reach: f64 = 0.0;
+    13 => physical_screens: Option<Text<32768>> = optional;
 });
 open_enum!(ErrorScope { Connection=0, LogicalLink=1, Stream=2, LowOperation=3, Message=4 });
 open_enum!(Isolation { Stream=0, LowOperation=1, LogicalLink=2, PhysicalConnection=3 });

@@ -126,6 +126,7 @@ export const SECTIONS: SectionMeta[] = [
         get title() { return tr('布局'); },
         icon: <Icon name="layout"/>,
         items: [
+            { id: 'physicalMonitors', get label() { return tr('物理屏幕归属'); }, get desc() { return tr('绑定共用显示器，联动切换输入源和鼠标布局'); }, get keywords() { return 'DDC KVM physical monitor input source 物理屏幕 显示器 归属 输入源'; } },
             { id: 'manageLayouts', get label() { return tr('保存的布局'); }, get desc() { return tr('调整排列会自动保存到当前布局；切换布局会恢复它保存的排列'); }, get keywords() { return tr('布局 保存 切换 新建 重命名 删除 方案 预设 profile'); } },
             { id: 'syncSystemArrangement', get label() { return tr('允许修改本机系统屏幕排列'); }, get desc() { return tr('本机有多个屏幕时，在布局页进行的调整同步到系统屏幕排列'); }, get keywords() { return tr('显示器 屏幕 排列 系统设置 多屏 主屏 副屏 拼接 位置 允许 权限 同步调整系统屏幕排列 display arrangement'); } },
             // Remote pointer speed: how fast other devices' pointers cross this computer's screens.

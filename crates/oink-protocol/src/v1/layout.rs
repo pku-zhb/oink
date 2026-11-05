@@ -69,6 +69,6 @@ pub fn require_supported_geometry(layout: &dto::LayoutValue) -> Result<()> {
     if total > 256 {
         return Err(ErrorCode::LimitExceeded.into());
     }
-    known_fields(layout.topology()?.raw(), &[6, 7, 8, 9, 10, 12])?;
+    known_fields(layout.topology()?.raw(), &[6, 7, 8, 9, 10, 12, 13])?;
     Ok(())
 }

@@ -422,6 +422,10 @@ impl RemoteApi {
 }
 
 impl AgentApi for RemoteApi {
+    fn physical_monitors(&self, command: crate::physical_monitors::Command) -> ApiResult<serde_json::Value> {
+        self.call(Request::PhysicalMonitors { command })
+    }
+
     fn layout_profile_command(&self, command: crate::layout_profiles::types::Command) -> ApiResult<serde_json::Value> {
         use crate::layout_profiles::types::Command;
         self.call(match command {

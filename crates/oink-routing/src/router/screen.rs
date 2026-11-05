@@ -23,6 +23,25 @@ impl Router {
             .cloned()
     }
     pub(super) fn enforce_screen_policy(&mut self) {
+        // A scene may hide the current logical screen while another native
+        // display on this computer remains visible. Move out of the stale screen.
+        if self.holder == self.me()
+            && !self.paused
+            && !self.fully_paused
+            && self
+                .layout
+                .gap_topology()
+                .is_some_and(|t| !t.settings().physical_screens.is_empty())
+            && self
+                .pointer
+                .as_ref()
+                .is_some_and(|p| self.hidden_entry(self.me(), &p.screen.display))
+            && let Some(at) = self.primary_display_center()
+        {
+            self.pointer = Some(at.clone());
+            self.local_cursor = Some(at.clone());
+            self.out.push(Output::Inject(InjectEvent::MoveTo { pos: at.local }));
+        }
         let from = self.holder;
         if self
             .locked_device()

@@ -1478,6 +1478,17 @@ impl Router {
 
     /// 本机主屏（系统的主显示器；没有标记时取第一块）的中央。
     fn primary_display_center(&self) -> Option<ScreenPos> {
+        if let Some(t) = self
+            .layout
+            .gap_topology()
+            .filter(|t| !t.settings().physical_screens.is_empty())
+        {
+            let screen = t.screens().iter().find(|s| s.enabled && s.id.device == self.me())?;
+            return Some(ScreenPos::new(
+                ScreenId::new(self.me(), &screen.id.display),
+                screen.local.center(),
+            ));
+        }
         let d = self
             .displays
             .iter()

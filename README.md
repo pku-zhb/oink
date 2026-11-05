@@ -7,6 +7,11 @@
 
 # Oink — Oink Is Not only a KVM
 
+> **Modified experimental fork by pku-zhb, based on Oink v0.3.2.** This is not an
+> official Oink release. Original Oink attribution and licenses are retained.
+> This branch adds physical monitor ownership, guided input binding, and verified
+> BetterDisplay / native Windows DDC input switching. See the [physical monitor guide](README.zh-CN.md#物理屏幕归属本-fork-新增).
+
 **English** | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
 Oink, short for "Oink Is Not only a KVM", is modern software that builds a peer-to-peer sharing network across multiple Windows and Mac computers. Use the keyboard, mouse and trackpad of any device to control any nearby device, with the same native feel everywhere; play the audio of several devices through the speakers or headphones connected to one of them; share the clipboard and drag and drop between devices; discover devices on the local network automatically; all traffic is encrypted by default.

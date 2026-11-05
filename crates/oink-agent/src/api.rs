@@ -1907,6 +1907,12 @@ pub struct SubscriptionId(pub u64);
 /// 界面调用服务进程的接口。实现必须线程安全；命令可能阻塞（例如 `connect_by_ip` 等待网络），
 /// 界面在后台线程调用。
 pub trait AgentApi: Send + Sync {
+    fn physical_monitors(&self, _command: crate::physical_monitors::Command) -> ApiResult<serde_json::Value> {
+        Err(ApiError::Unavailable {
+            message: "Physical monitor control is unavailable".into(),
+        })
+    }
+
     fn layout_profile_command(&self, command: crate::layout_profiles::types::Command) -> ApiResult<serde_json::Value>;
 
     fn device_cards(&self) -> ApiResult<crate::device_cards::DeviceCardsView>;
@@ -2231,6 +2237,9 @@ pub trait AgentApi: Send + Sync {
 #[serde(tag = "method", content = "params", rename_all = "snake_case", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]
 pub enum Request {
+    PhysicalMonitors {
+        command: crate::physical_monitors::Command,
+    },
     LayoutProfiles,
     CreateLayoutProfile(crate::layout_profiles::types::Create),
     RenameLayoutProfile(crate::layout_profiles::types::Rename),
@@ -2547,6 +2556,7 @@ pub enum Request {
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum Reply {
+    PhysicalMonitors(serde_json::Value),
     LayoutProfile(serde_json::Value),
     ConnectionQuality(ConnectionQuality),
     AudioQuality(AudioQuality),
@@ -2610,6 +2620,7 @@ pub fn dispatch<A: AgentApi + ?Sized>(api: &A, req: Request) -> ApiResult<Reply>
     use Request as R;
     let unit = |r: ApiResult<()>| r.map(|()| Reply::Unit);
     match req {
+        R::PhysicalMonitors { command } => api.physical_monitors(command).map(Reply::PhysicalMonitors),
         R::LayoutProfiles => api
             .layout_profile_command(crate::layout_profiles::types::Command::Query)
             .map(Reply::LayoutProfile),

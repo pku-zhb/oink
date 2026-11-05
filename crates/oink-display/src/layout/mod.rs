@@ -19,6 +19,8 @@ mod trigger;
 mod view;
 
 #[cfg(test)]
+mod physical_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod trigger_tests;
@@ -230,6 +232,9 @@ pub fn deserialize_cursor_trail_duration_ms<'de, D: serde::Deserializer<'de>>(d:
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LayoutSettings {
+    /// Explicit physical monitor ownership. Empty retains ordinary desktop routing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub physical_screens: Vec<PhysicalScreen>,
     /// Travel through positive gaps between devices, using the leaving screen scale.
     pub gap_travel: bool,
     /// Extra near-miss reach along channel ends, in plane plane (0 disables; maximum 50).
@@ -249,6 +254,7 @@ pub struct LayoutSettings {
 impl Default for LayoutSettings {
     fn default() -> Self {
         Self {
+            physical_screens: Vec::new(),
             gap_travel: false,
             endpoint_reach: 0.0,
             overlap_tolerance: 5.0 / 686.0,
@@ -257,6 +263,38 @@ impl Default for LayoutSettings {
             walls: true,
         }
     }
+}
+
+/// A visible physical rectangle bound to one computer's native display identity.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PhysicalScreen {
+    pub device: String,
+    pub display: String,
+    pub rect: Rect,
+}
+
+pub fn valid_physical_screens(screens: &[PhysicalScreen]) -> bool {
+    screens.len() <= 16
+        && screens.iter().enumerate().all(|(i, s)| {
+            s.device.len() == 64
+                && s.device
+                    .bytes()
+                    .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+                && !s.display.is_empty()
+                && s.display.len() <= 512
+                && [s.rect.x, s.rect.y, s.rect.w, s.rect.h, s.rect.right(), s.rect.bottom()]
+                    .into_iter()
+                    .all(f64::is_finite)
+                && s.rect.w > 0.0
+                && s.rect.h > 0.0
+                && [s.rect.x, s.rect.y, s.rect.w, s.rect.h]
+                    .into_iter()
+                    .all(|v| v.abs() < 1_000_000.0)
+                && screens[..i].iter().all(|p| {
+                    (p.device != s.device || p.display != s.display) && !crate::arrangement::overlaps(p.rect, s.rect)
+                })
+        })
 }
 
 pub fn valid_endpoint_reach(plane: f64) -> bool {
@@ -377,9 +415,9 @@ impl EffectiveLayout {
     pub fn contains_device(&self, device: DeviceId) -> bool {
         self.screens.iter().any(|s| s.enabled && s.id.device == device)
     }
-    /// Hiding a screen never redirects its current input focus.
-    pub fn source_requires_target(&self, _device: DeviceId) -> bool {
-        false
+    /// Ordinary hiding preserves focus; physical ownership redirects sources with no visible monitor.
+    pub fn source_requires_target(&self, device: DeviceId) -> bool {
+        !self.settings.physical_screens.is_empty() && !self.contains_device(device)
     }
     pub fn topology(&self) -> Topology {
         Topology::from_effective(self, |_| true)
@@ -415,7 +453,18 @@ impl Layout {
         let defaults = OwnerLayoutPreferences::default();
         for placement in &self.screens {
             let owner = owners.get(&placement.id.device).unwrap_or(&defaults);
-            let s = owner.screen(placement);
+            let mut s = owner.screen(placement);
+            if !self.settings.physical_screens.is_empty() {
+                let physical = self
+                    .settings
+                    .physical_screens
+                    .iter()
+                    .find(|p| p.device == placement.id.device.to_hex() && p.display == placement.id.display);
+                s.enabled = owner.screen_shared && physical.is_some();
+                if let Some(physical) = physical {
+                    s.placement.rect = physical.rect;
+                }
+            }
             if !s.is_valid() {
                 continue;
             }

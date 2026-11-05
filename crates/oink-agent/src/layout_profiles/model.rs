@@ -494,6 +494,9 @@ pub fn validate_snapshot(snapshot: &ArrangementSnapshot) -> Result<()> {
         return Err(invalid());
     }
     let s = &snapshot.topology;
+    if !oink_display::layout::valid_physical_screens(&s.physical_screens) {
+        return Err(invalid());
+    }
     if ![s.overlap_tolerance, s.minimum_portal, s.portal_snap, s.endpoint_reach]
         .into_iter()
         .all(|v| v.is_finite() && v >= 0.0)

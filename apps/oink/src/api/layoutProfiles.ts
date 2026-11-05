@@ -12,6 +12,7 @@ export interface NativeState {
   screens: { screen: ScreenKey; origin: Point; size: Size }[];
 }
 export interface Topology {
+  physical_screens?: { device: string; display: string; rect: import('./types').Rect }[];
   gap_travel: boolean;
   overlap_tolerance: number;
   minimum_portal: number;

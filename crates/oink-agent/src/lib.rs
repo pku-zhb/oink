@@ -30,6 +30,7 @@ pub mod ipc;
 pub mod layout_profiles;
 pub mod layout_sync;
 pub mod logs;
+pub mod physical_monitors;
 
 pub mod node;
 pub mod prelogin;

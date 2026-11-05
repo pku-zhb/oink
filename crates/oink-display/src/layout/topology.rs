@@ -92,7 +92,11 @@ impl Topology {
     pub fn from_effective(layout: &EffectiveLayout, online: impl Fn(&DeviceId) -> bool) -> Self {
         let screens: Vec<_> = layout.screens().iter().filter(|s| s.is_valid()).cloned().collect();
         let rects: Vec<Rect> = screens.iter().map(|s| s.rect).collect();
-        let occupied: Vec<bool> = screens.iter().map(|s| online(&s.id.device)).collect();
+        let physical = !layout.settings().physical_screens.is_empty();
+        let occupied: Vec<bool> = screens
+            .iter()
+            .map(|s| online(&s.id.device) && (!physical || s.enabled))
+            .collect();
         let active: Vec<bool> = screens
             .iter()
             .zip(&occupied)
@@ -108,7 +112,7 @@ impl Topology {
                             if !active[b] {
                                 return None;
                             }
-                            if screens[i].id.device != screens[b].id.device {
+                            if physical || screens[i].id.device != screens[b].id.device {
                                 return Some(st.minimum_portal);
                             }
                             // Same-computer edges come only from native OS adjacency.
@@ -224,8 +228,8 @@ impl Topology {
             .any(|(s, active)| *active && s.id.device == device)
     }
     /// Hidden screens retain their focus until an explicit focus command.
-    pub fn source_requires_target(&self, _device: DeviceId) -> bool {
-        false
+    pub fn source_requires_target(&self, device: DeviceId) -> bool {
+        !self.settings.physical_screens.is_empty() && !self.contains_device(device)
     }
     /// Stored anchor used only to choose a destination for an input source.
     pub fn source_origin(&self, device: DeviceId) -> Option<Point> {

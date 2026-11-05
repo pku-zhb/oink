@@ -113,7 +113,7 @@ describe('Layout section', () => {
     expect(ids.slice(0, 3)).toEqual(['general', 'appearance', 'layout']);
     const section = container.querySelector<HTMLElement>('[data-section="layout"]')!;
     expect(within(section).getByRole('heading', { level: 2 }).textContent).toBe('Layout');
-    expect(Array.from(section.querySelectorAll<HTMLElement>('[data-item]'), i => i.dataset.item)).toEqual(['manageLayouts', 'syncSystemArrangement', 'pointerGain', 'screenPointerGains']);
+    expect(Array.from(section.querySelectorAll<HTMLElement>('[data-item]'), i => i.dataset.item)).toEqual(['physicalMonitors', 'manageLayouts', 'syncSystemArrangement', 'pointerGain', 'screenPointerGains']);
     const input = container.querySelector<HTMLElement>('[data-section="input"]')!;
     expect(input.querySelector('[data-item="pointerGain"], [data-item="screenPointerGains"]')).toBeNull();
   });

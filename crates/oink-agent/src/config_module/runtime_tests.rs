@@ -837,6 +837,102 @@ async fn display_geometry_and_owner_facts_converge_without_replicating_pause() {
     assert!(!nodes[1].group.applied().paused);
     stop(&nodes).await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn physical_monitor_scenes_converge_over_the_real_config_link() {
+    use oink_display::layout::{PhysicalScreen, ScreenId, ScreenPos};
+    use oink_foundation::{Point, Rect};
+    let nodes = start(same_group(2)).await;
+    assert!(until(|| ready(&nodes)).await);
+    for node in &nodes {
+        let mut left = display("left");
+        left.is_primary = true;
+        let mut right = display("right");
+        right.is_primary = false;
+        right.bounds.x = 800.;
+        node.group.initialize_displays(vec![left, right]).unwrap();
+    }
+    assert!(until(|| nodes.iter().all(|n| n.group.applied().layout.screens.len() == 4)).await);
+    assert!(
+        nodes[0]
+            .group
+            .peer_supports(nodes[1].identity.id(), crate::physical_monitors::CAP)
+    );
+    for left in 0..2 {
+        for right in 0..2 {
+            let selected = vec![
+                PhysicalScreen {
+                    device: nodes[left].identity.id().to_hex(),
+                    display: "left".into(),
+                    rect: Rect::new(0., 0., 1., 1.),
+                },
+                PhysicalScreen {
+                    device: nodes[right].identity.id().to_hex(),
+                    display: "right".into(),
+                    rect: Rect::new(1., 0., 1., 1.),
+                },
+            ];
+            let intended = selected.clone();
+            nodes[0]
+                .group
+                .edit_layout(
+                    Box::new(move |layout| layout.settings.physical_screens = selected),
+                    dto::LayoutSource::Manual,
+                )
+                .unwrap();
+            assert!(
+                until(|| nodes
+                    .iter()
+                    .all(|n| n.group.applied().layout.settings.physical_screens == intended))
+                .await
+            );
+            for node in &nodes {
+                let applied = node.group.applied();
+                let topology = applied.layout.topology(&applied.owners);
+                let l = ScreenId::new(nodes[left].identity.id(), "left");
+                let r = ScreenId::new(nodes[right].identity.id(), "right");
+                let from = topology.from_plane(&l, Point::new(0.99, 0.5)).unwrap();
+                assert_eq!(
+                    topology
+                        .step(
+                            &ScreenPos {
+                                screen: l.clone(),
+                                local: from
+                            },
+                            (0.02, 0.)
+                        )
+                        .unwrap()
+                        .to
+                        .screen,
+                    r
+                );
+                let from = topology.from_plane(&r, Point::new(1.01, 0.5)).unwrap();
+                assert_eq!(
+                    topology
+                        .step(&ScreenPos { screen: r, local: from }, (-0.02, 0.))
+                        .unwrap()
+                        .to
+                        .screen,
+                    l
+                );
+            }
+        }
+    }
+    nodes[0]
+        .group
+        .edit_layout(
+            Box::new(|layout| layout.settings.physical_screens.clear()),
+            dto::LayoutSource::Manual,
+        )
+        .unwrap();
+    assert!(
+        until(|| nodes
+            .iter()
+            .all(|n| n.group.applied().layout.settings.physical_screens.is_empty()))
+        .await
+    );
+    stop(&nodes).await;
+}
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn concurrent_owner_display_observations_survive_a_whole_layout_lww_winner() {
     let nodes = start(same_group(2)).await;
