@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Group, Input, Select } from 'oink-ui';
+import { Button, Group, Input, Select, Switch } from 'oink-ui';
 import { api } from '../api/client';
 import { physicalCall, monitorScenes, sameScreen } from '../api/physicalMonitors';
 import type { PhysicalMonitor, PhysicalState } from '../api/physicalMonitors';
@@ -13,6 +13,7 @@ export function PhysicalMonitors() {
   const [state, setState] = useState<PhysicalState | null>(null);
   const [draft, setDraft] = useState<PhysicalMonitor[]>([]);
   const [busy, setBusy] = useState(false);
+  const [baselineConfirmed, setBaselineConfirmed] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [inputTexts, setInputTexts] = useState<Record<string,string>>({});
@@ -24,7 +25,7 @@ export function PhysicalMonitors() {
   ]).entries());
   const name = (key: ScreenKey) => screens.find(s => s.key.device === key.device)?.device_name
     ?? computers.find(([id]) => id === key.device)?.[1] ?? key.device.slice(0, 8);
-  const accept = (next: PhysicalState) => { setState(next); setDraft(next.setup.monitors); setInputTexts({}); };
+  const accept = (next: PhysicalState, confirmed = false) => { setBaselineConfirmed(confirmed); setState(next); setDraft(next.setup.monitors); setInputTexts({}); };
   useEffect(() => { let live = true; physicalCall({action:'query'}).then(s => { if (live) accept(s); }).catch(e => { if (live) setError(String(e.message)); }); return () => { live = false; }; }, []);
   const run = async (work: () => Promise<void>) => {
     if (busy) return;
@@ -36,13 +37,15 @@ export function PhysicalMonitors() {
   const refreshLayout = () => agent.query('layout', api.layout);
   const apply = (selected: ScreenKey[]) => run(async () => {
     if (!state) return;
-    accept(await physicalCall({action:'apply', expected_revision:state.setup.revision, screens:selected}));
-    await refreshLayout(); setNotice(tr('输入源已确认，物理屏幕布局已应用'));
+    const next = await physicalCall({action:'apply', expected_revision:state.setup.revision, screens:selected,...(state.setup.monitors.some(m => m.readback === false) ? {confirmed_inputs:Object.fromEntries(state.setup.monitors.filter(m => m.readback === false && m.initial_input).map(m => [m.controller_display,m.initial_input!]))} : {})});
+    accept(next);
+    await refreshLayout(); setNotice(next.setup.monitors.some(m => m.readback === false) ? tr('切屏命令已发送，布局已按校准映射应用；部分输入源无法读回确认。') : tr('输入源已确认，物理屏幕布局已应用'));
   });
   const active = !!state?.active.length;
   const dirty = !!state && JSON.stringify(draft) !== JSON.stringify(state.setup.monitors);
   const scenes = monitorScenes(state?.setup.monitors ?? []);
   const unavailable = !state?.controller_available;
+  const needsBaseline = !active && !baselineConfirmed && draft.some(m => m.readback === false);
   return <div className="physical" aria-busy={busy}>
     <p>{tr('按实际摆放顺序绑定物理屏幕，再为每块屏幕选择显示哪台电脑。')}</p>
     <p className="setp__note">{tr('首次设置：先让两台电脑都识别所有屏幕，点击识别屏幕，逐一匹配同一块物理屏幕在各电脑中的身份。')}</p>
@@ -57,7 +60,7 @@ export function PhysicalMonitors() {
       </Group>
       {scenes.length > 0 && <div className="physical__scenes" aria-label={tr('物理屏幕组合')}>
         {scenes.map((scene, index) => <Button key={index} size="sm" variant={scene.length === state.active.length && scene.every((s, i) => sameScreen(s, state.active[i])) ? 'accent' : undefined}
-          disabled={busy || dirty || unavailable} onClick={() => { void apply(scene); }}>
+          disabled={busy || dirty || unavailable || needsBaseline} onClick={() => { void apply(scene); }}>
           {scene.map(name).join(' / ')}
         </Button>)}
       </div>}
@@ -74,6 +77,17 @@ export function PhysicalMonitors() {
                 update(index, {controller_display:value, bindings:key ? [...monitor.bindings.filter(b => b.screen.device !== key.device),{screen:key,input:0}] : monitor.bindings});
               }}/>
           </label>
+          <label>{tr('验证输入源读回')}
+            <Switch aria-label={`${monitor.name} · ${tr('验证输入源读回')}`} checked={monitor.readback !== false} onChange={readback => update(index,{readback})}/>
+          </label>
+          {monitor.readback === false && <>
+            <p className="setp__note">{tr('此模式按目视确认的映射发出切屏命令。首次使用或手动切源后，请确认当前画面；程序无法核验实际输入源。')}</p>
+            <label>{tr('当前实际显示的电脑')}
+              <Select aria-label={`${monitor.name} · ${tr('当前实际显示的电脑')}`} value={String(monitor.initial_input ?? '')}
+                options={[{value:'',label:tr('请选择当前显示的电脑')},...monitor.bindings.filter(b => b.input > 0).map(b => ({value:String(b.input),label:name(b.screen)}))]}
+                onChange={value => update(index,{initial_input:Number(value) || null})}/>
+            </label>
+          </>}
           {computers.map(([device, computer]) => {
             const binding = monitor.bindings.find(b => b.screen.device === device);
             const options = screens.filter(s => s.key.device === device && !s.display.is_virtual);
@@ -93,14 +107,14 @@ export function PhysicalMonitors() {
                   onChange={value => { const input = Number(value); setBinding(binding!.screen.display, Number.isInteger(input) && input > 0 && input <= 65535 ? input : 0, value); }}/>
               </label>
               <Group className="physical__actions">
-                <Button size="sm" disabled={!binding || !monitor.controller_display} onClick={() => { void run(async () => {
+                <Button size="sm" disabled={!binding || !monitor.controller_display || monitor.readback === false} onClick={() => { void run(async () => {
                   const value = await physicalCall<{input:number}>({action:'read',controller_display:monitor.controller_display});
                   setBinding(binding!.screen.display,value.input); setNotice(tr('已读取当前输入源：{0}',value.input));
                 }); }}>{tr('读取当前输入')}</Button>
-                <Button size="sm" disabled={!binding?.input || !monitor.controller_display} onClick={() => { void run(async () => {
+                <Button size="sm" disabled={!binding?.input || !monitor.controller_display || (monitor.readback === false && !monitor.initial_input)} onClick={() => { void run(async () => {
                   setNotice(tr('正在测试，5 秒后自动恢复原输入源'));
-                  await physicalCall({action:'test',controller_display:monitor.controller_display,input:binding!.input});
-                  setNotice(tr('测试完成，已恢复原输入源；请确认刚才显示的是所选电脑。'));
+                  await physicalCall({action:'test',controller_display:monitor.controller_display,input:binding!.input,...(monitor.readback === false ? {restore_input:monitor.initial_input!} : {})});
+                  setNotice(monitor.readback === false ? tr('测试命令和恢复命令已发送；请目视确认画面，显示器无法读回验证。') : tr('测试完成，已恢复原输入源；请确认刚才显示的是所选电脑。'));
                 }); }}>{tr('测试并恢复')}</Button>
               </Group>
             </div>;
@@ -109,7 +123,7 @@ export function PhysicalMonitors() {
         </div>)}
         <Group className="physical__actions">
           <Button size="sm" disabled={draft.length >= 8} onClick={() => setDraft(current => [...current,{name:tr('物理屏幕 {0}',current.length+1),controller_display:'',bindings:[]}])}>{tr('添加物理屏幕')}</Button>
-          <Button size="sm" variant="accent" disabled={!dirty} onClick={() => { void run(async () => { accept(await physicalCall({action:'save',expected_revision:state.setup.revision,monitors:draft})); setNotice(tr('物理屏幕绑定已保存')); }); }}>{tr('保存绑定')}</Button>
+          <Button size="sm" variant="accent" disabled={!dirty && !needsBaseline} onClick={() => { void run(async () => { accept(await physicalCall({action:'save',expected_revision:state.setup.revision,monitors:draft}),true); setNotice(tr('物理屏幕绑定已保存')); }); }}>{needsBaseline ? tr('保存绑定并确认当前画面') : tr('保存绑定')}</Button>
         </Group>
       </fieldset>
       <p className="setp__note">{tr('输入源数值由显示器决定。可手动切到目标电脑后读取，或填写已知数值；测试会自动恢复。不会自动扫描未知输入源。')}</p>

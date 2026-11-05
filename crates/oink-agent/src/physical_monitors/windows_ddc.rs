@@ -112,12 +112,16 @@ pub(super) fn read(key: &str) -> Result<u16, String> {
         .filter(|v| *v != 0)
         .ok_or_else(|| "The monitor returned an invalid input value".into())
 }
-pub(super) fn write(key: &str, value: u16) -> Result<(), String> {
+pub(super) fn write_only(key: &str, value: u16) -> Result<(), String> {
     let monitor = open(key)?;
     // SAFETY: owned live handle; the user configured this nonzero input value.
     if value == 0 || unsafe { SetVCPFeature(monitor.0.handle, 0x60, u32::from(value)) } == 0 {
         return Err("The monitor rejected the DDC input switch".into());
     }
+    Ok(())
+}
+pub(super) fn write(key: &str, value: u16) -> Result<(), String> {
+    write_only(key, value)?;
     for _ in 0..5 {
         std::thread::sleep(std::time::Duration::from_millis(150));
         if read(key).is_ok_and(|actual| actual == value) {

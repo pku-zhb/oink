@@ -2,7 +2,7 @@ import { call } from './client';
 import type { ScreenKey, Rect } from './types';
 
 export interface MonitorBinding { screen: ScreenKey; input: number }
-export interface PhysicalMonitor { name: string; controller_display: string; bindings: MonitorBinding[] }
+export interface PhysicalMonitor { name: string; controller_display: string; bindings: MonitorBinding[]; readback?: boolean; initial_input?: number | null }
 export interface PhysicalState {
   setup: { revision: number; monitors: PhysicalMonitor[] };
   active: { device: string; display: string; rect: Rect }[];
@@ -12,8 +12,8 @@ export type PhysicalCommand =
   | { action: 'query' | 'clear' }
   | { action: 'save'; expected_revision: number; monitors: PhysicalMonitor[] }
   | { action: 'read'; controller_display: string }
-  | { action: 'test'; controller_display: string; input: number }
-  | { action: 'apply'; expected_revision: number; screens: ScreenKey[] };
+  | { action: 'test'; controller_display: string; input: number; restore_input?: number }
+  | { action: 'apply'; expected_revision: number; screens: ScreenKey[]; confirmed_inputs?: Record<string,number> };
 
 export async function physicalCall<R = PhysicalState>(command: PhysicalCommand): Promise<R> {
   const reply = await call<R & { error?: string }>('physical_monitors', { command });

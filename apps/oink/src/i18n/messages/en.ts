@@ -1063,4 +1063,11 @@ export const en = {
   "输入源数值由显示器决定。可手动切到目标电脑后读取，或填写已知数值；测试会自动恢复。不会自动扫描未知输入源。": "Input values depend on the monitor. Switch manually to a computer and read its value, or enter a known value. Tests restore the previous input; unknown inputs are never scanned.",
   "此功能保留系统扩展桌面，窗口仍可能打开在当前不可见的逻辑屏幕上。": "System extended desktops remain enabled. Windows can still open on a logical screen that is not currently visible.",
   "识别屏幕": "Identify screens",
+  "切屏命令已发送，布局已按校准映射应用；部分输入源无法读回确认。": "Switch commands sent and calibrated layout applied; some inputs cannot be verified by readback.",
+  "验证输入源读回": "Verify input by readback",
+  "此模式按目视确认的映射发出切屏命令。首次使用或手动切源后，请确认当前画面；程序无法核验实际输入源。": "This mode sends commands using visually confirmed mappings. Confirm the current picture before first use or after manual input changes; actual inputs cannot be verified.",
+  "当前实际显示的电脑": "Computer currently shown",
+  "请选择当前显示的电脑": "Choose the computer currently shown",
+  "测试命令和恢复命令已发送；请目视确认画面，显示器无法读回验证。": "Test and restore commands sent. Verify the picture visually; the monitor cannot confirm it by readback.",
+  "保存绑定并确认当前画面": "Save bindings and confirm current picture",
 } as const satisfies Record<string, Message>;

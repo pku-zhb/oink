@@ -12,7 +12,7 @@ permissions:
   contents: read
 concurrency:
   group: physical-monitor-preview-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   windows:
     runs-on: windows-2022
@@ -34,7 +34,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run -w apps/oink build
-      - run: cargo build --release --locked -p oink-agent -p oink-ui -p oink-winsvc --bins --features oink-ui/custom-protocol
+      - run: cargo build --release --locked -p oink-agent -p oink-ui -p oink-winsvc -p oink-crash --bins --features oink-ui/custom-protocol
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: physical-monitor-windows-x64

@@ -69,3 +69,24 @@ it('accepts a hexadecimal input value without discarding the typed prefix',async
     expect.objectContaining({name:'Left',bindings:expect.arrayContaining([{screen:key('mac','ml'),input:18}])}),
   ])})}));
 });
+it('uses the visually confirmed baseline to test a monitor without readback',async()=>{
+  const calibrated={...setup,monitors:setup.monitors.map((m,i)=>i===0?{...m,readback:false,initial_input:17}:m)};
+  mocks.call.mockResolvedValue({setup:calibrated,active:[],controller_available:true});
+  const result=render(view());
+  await result.findByText('This mode sends commands using visually confirmed mappings. Confirm the current picture before first use or after manual input changes; actual inputs cannot be verified.');
+  expect((result.getAllByRole('button',{name:'Read current input'})[0] as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(result.getAllByRole('button',{name:'Test and restore'})[0]);
+  await waitFor(()=>expect(mocks.call).toHaveBeenCalledWith('physical_monitors',{command:{action:'test',controller_display:'ml',input:17,restore_input:17}}));
+  await result.findByText('Test and restore commands sent. Verify the picture visually; the monitor cannot confirm it by readback.');
+});
+it('requires a fresh picture confirmation before entering calibrated physical mode',async()=>{
+  const calibrated={...setup,monitors:setup.monitors.map((m,i)=>i===0?{...m,readback:false,initial_input:17}:m)};
+  mocks.call.mockResolvedValue({setup:calibrated,active:[],controller_available:true});
+  const result=render(view());
+  const scene=await result.findByRole('button',{name:'Mac / Win'});
+  expect((scene as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(result.getByRole('button',{name:'Save bindings and confirm current picture'}));
+  await waitFor(()=>expect((scene as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(scene);
+  await waitFor(()=>expect(mocks.call).toHaveBeenCalledWith('physical_monitors',{command:{action:'apply',expected_revision:2,screens:[key('mac','ml'),key('win','wr')],confirmed_inputs:{ml:17}}}));
+});

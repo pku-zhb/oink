@@ -7,7 +7,11 @@ use crate::{
 use oink_display::layout::{Layout, PhysicalScreen};
 use oink_foundation::Rect;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeSet, sync::Mutex, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Mutex,
+    time::Duration,
+};
 
 #[cfg(windows)]
 mod windows_ddc;
@@ -35,6 +39,14 @@ pub struct Monitor {
     /// Exact native display key: macOS UUID or Windows device-interface path.
     pub controller_display: String,
     pub bindings: Vec<Binding>,
+    #[serde(default = "readback_default")]
+    pub readback: bool,
+    /// User-confirmed starting input for monitors that cannot report VCP 0x60.
+    #[serde(default)]
+    pub initial_input: Option<u16>,
+}
+fn readback_default() -> bool {
+    true
 }
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Setup {
@@ -55,10 +67,14 @@ pub enum Command {
     Test {
         controller_display: String,
         input: u16,
+        #[serde(default)]
+        restore_input: Option<u16>,
     },
     Apply {
         expected_revision: u64,
         screens: Vec<ScreenKey>,
+        #[serde(default)]
+        confirmed_inputs: BTreeMap<String, u16>,
     },
     Clear,
 }
@@ -117,6 +133,11 @@ fn validate(monitors: &[Monitor]) -> ApiResult<()> {
                 ));
             }
         }
+        if !m.readback && !m.bindings.iter().any(|b| Some(b.input) == m.initial_input) {
+            return Err(invalid(
+                "Confirm the monitor's current computer before using calibrated input switching",
+            ));
+        }
     }
     Ok(())
 }
@@ -163,9 +184,22 @@ fn plan(
 trait Ddc {
     fn read(&mut self, display: &str) -> Result<u16, String>;
     fn write(&mut self, display: &str, input: u16) -> Result<(), String>;
+    fn write_only(&mut self, display: &str, input: u16) -> Result<(), String> {
+        self.write(display, input)
+    }
 }
 struct LocalDdc;
 impl Ddc for LocalDdc {
+    fn write_only(&mut self, display: &str, value: u16) -> Result<(), String> {
+        #[cfg(windows)]
+        {
+            windows_ddc::write_only(display, value)
+        }
+        #[cfg(not(windows))]
+        {
+            BetterDisplay.write_only(display, value)
+        }
+    }
     fn read(&mut self, display: &str) -> Result<u16, String> {
         #[cfg(windows)]
         {
@@ -248,7 +282,7 @@ impl Ddc for BetterDisplay {
         .ok_or(())
         .map_err(|_| "The monitor did not report its current input; routing was not changed".into())
     }
-    fn write(&mut self, display: &str, input: u16) -> Result<(), String> {
+    fn write_only(&mut self, display: &str, input: u16) -> Result<(), String> {
         if !uuid(display) || input == 0 {
             return Err("Invalid display UUID or input value".into());
         }
@@ -259,6 +293,10 @@ impl Ddc for BetterDisplay {
             "-vcp=inputSelect".into(),
             format!("-value={input}"),
         ])?;
+        Ok(())
+    }
+    fn write(&mut self, display: &str, input: u16) -> Result<(), String> {
+        self.write_only(display, input)?;
         for _ in 0..5 {
             std::thread::sleep(Duration::from_millis(150));
             if self.read(display).is_ok_and(|actual| actual == input) {
@@ -269,36 +307,59 @@ impl Ddc for BetterDisplay {
     }
 }
 
-/// Never publish ownership after an unconfirmed DDC write. Any uncertain write is
-/// included in rollback, and restoration failures remain explicit to the caller.
+struct InputChange {
+    display: String,
+    input: u16,
+    /// None requires hardware readback. Some is an explicit calibrated baseline.
+    calibrated_before: Option<u16>,
+}
+impl InputChange {
+    fn write(&self, ddc: &mut impl Ddc, value: u16) -> Result<(), String> {
+        if self.calibrated_before.is_some() {
+            ddc.write_only(&self.display, value)
+        } else {
+            ddc.write(&self.display, value)
+        }
+    }
+}
+
+/// Publish only after successful writes and the requested verification policy.
+/// Calibrated monitors never claim hardware readback or verified restoration.
 fn transaction(
     ddc: &mut impl Ddc,
-    targets: &[(String, u16)],
+    targets: &[InputChange],
     commit: impl FnOnce() -> Result<(), String>,
 ) -> Result<(), String> {
     let previous = targets
         .iter()
-        .map(|(id, _)| ddc.read(id).map(|input| (id.clone(), input)))
+        .map(|change| match change.calibrated_before {
+            Some(value) => Ok(value),
+            None => ddc.read(&change.display),
+        })
         .collect::<Result<Vec<_>, _>>()?;
     let mut attempted = 0;
     let outcome = (|| {
-        for ((id, input), (_, old)) in targets.iter().zip(&previous) {
+        for (change, old) in targets.iter().zip(&previous) {
             attempted += 1;
-            if input != old {
-                ddc.write(id, *input)?;
+            if change.input != *old {
+                change.write(ddc, change.input)?;
             }
         }
         commit()
     })();
     if let Err(error) = outcome {
         let mut failures = Vec::new();
-        for (id, input) in previous[..attempted].iter().rev() {
-            if let Err(e) = ddc.write(id, *input) {
-                failures.push(format!("{id}: {e}"));
+        for (change, input) in targets[..attempted].iter().zip(&previous[..attempted]).rev() {
+            if let Err(e) = change.write(ddc, *input) {
+                failures.push(format!("{}: {e}", change.display));
             }
         }
         return Err(if failures.is_empty() {
-            format!("{error}. Previous inputs restored")
+            if targets.iter().any(|change| change.calibrated_before.is_some()) {
+                format!("{error}. Previous input commands resent; calibrated monitors require visual confirmation")
+            } else {
+                format!("{error}. Previous inputs restored")
+            }
         } else {
             format!("{error}. Input restoration needs attention: {}", failures.join("; "))
         });
@@ -361,22 +422,35 @@ pub fn execute(node: &Node, command: Command) -> ApiResult<serde_json::Value> {
         Command::Test {
             controller_display,
             input,
+            restore_input,
         } => {
-            let old = ddc.read(&controller_display).map_err(invalid)?;
-            let result = ddc.write(&controller_display, input);
+            if restore_input == Some(0) {
+                return Err(invalid("A nonzero calibrated restoration input is required"));
+            }
+            let old = match restore_input {
+                Some(input) => input,
+                None => ddc.read(&controller_display).map_err(invalid)?,
+            };
+            let change = InputChange {
+                display: controller_display,
+                input,
+                calibrated_before: restore_input,
+            };
+            let result = change.write(&mut ddc, input);
             if result.is_ok() {
                 std::thread::sleep(Duration::from_secs(5));
             }
-            let restore = ddc.write(&controller_display, old);
+            let restore = change.write(&mut ddc, old);
             if let Err(e) = restore {
                 return Err(invalid(format!("Test ended; input restoration failed: {e}")));
             }
             result.map_err(invalid)?;
-            Ok(serde_json::json!({"restored_input":old}))
+            Ok(serde_json::json!({"restored_input":old,"hardware_verified":restore_input.is_none()}))
         }
         Command::Apply {
             expected_revision,
             screens,
+            confirmed_inputs,
         } => {
             if expected_revision != setup.revision {
                 return Err(invalid("Setup changed; refresh and retry"));
@@ -392,26 +466,59 @@ pub fn execute(node: &Node, command: Command) -> ApiResult<serde_json::Value> {
                 return Err(invalid("Unlock pointer focus before switching physical monitors"));
             }
             let visible = plan(&setup, &screens, &baseline.layout, controller)?;
+            for m in setup.monitors.iter().filter(|m| !m.readback) {
+                let current = m.bindings.iter().find(|b| {
+                    baseline
+                        .layout
+                        .settings
+                        .physical_screens
+                        .iter()
+                        .any(|p| p.device == b.screen.device.0.to_hex() && p.display == b.screen.display)
+                });
+                if current.is_none()
+                    && !m
+                        .bindings
+                        .iter()
+                        .any(|b| confirmed_inputs.get(&m.controller_display) == Some(&b.input))
+                {
+                    return Err(invalid(
+                        "Confirm the current picture before entering physical mode on a monitor without readback",
+                    ));
+                }
+            }
             for screen in &screens {
                 if !baseline.owners.get(&screen.device.0).is_none_or(|o| o.screen_shared) {
                     return Err(invalid("Enable screen sharing on every selected computer"));
                 }
             }
-            let targets: Vec<_> = setup
-                .monitors
-                .iter()
-                .zip(&screens)
-                .map(|(m, s)| {
-                    (
-                        m.controller_display.clone(),
-                        m.bindings
+            let targets: Vec<_> =
+                setup
+                    .monitors
+                    .iter()
+                    .zip(&screens)
+                    .map(|(m, s)| InputChange {
+                        display: m.controller_display.clone(),
+                        input: m
+                            .bindings
                             .iter()
                             .find(|b| &b.screen == s)
                             .expect("validated binding")
                             .input,
-                    )
-                })
-                .collect();
+                        calibrated_before: if m.readback {
+                            None
+                        } else {
+                            m.bindings
+                                .iter()
+                                .find(|b| {
+                                    baseline.layout.settings.physical_screens.iter().any(|p| {
+                                        p.device == b.screen.device.0.to_hex() && p.display == b.screen.display
+                                    })
+                                })
+                                .map(|b| b.input)
+                                .or_else(|| confirmed_inputs.get(&m.controller_display).copied())
+                        },
+                    })
+                    .collect();
             transaction(&mut ddc, &targets, || {
                 node.commit_manual_layout_exact(|layout| {
                     if *layout != *baseline.layout {
@@ -441,6 +548,13 @@ pub fn execute(node: &Node, command: Command) -> ApiResult<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn verified(display: &str, input: u16) -> InputChange {
+        InputChange {
+            display: display.into(),
+            input,
+            calibrated_before: None,
+        }
+    }
     #[derive(Default)]
     struct Fake {
         values: std::collections::BTreeMap<String, u16>,
@@ -486,7 +600,7 @@ mod tests {
         }
         let mut ddc = FailRight(std::mem::take(&mut io));
         assert!(
-            transaction(&mut ddc, &[("L".into(), 15), ("R".into(), 8)], || panic!(
+            transaction(&mut ddc, &[verified("L", 15), verified("R", 8)], || panic!(
                 "must not commit"
             ))
             .is_err()
@@ -500,7 +614,7 @@ mod tests {
             values: [("L".into(), 17)].into(),
             ..Default::default()
         };
-        assert!(transaction(&mut io, &[("L".into(), 15)], || Err("Stale".into())).is_err());
+        assert!(transaction(&mut io, &[verified("L", 15)], || Err("Stale".into())).is_err());
         assert_eq!(io.values["L"], 17);
     }
     #[test]
@@ -510,11 +624,54 @@ mod tests {
             ..Default::default()
         };
         assert!(
-            transaction(&mut io, &[("L".into(), 15), ("R".into(), 8)], || panic!(
+            transaction(&mut io, &[verified("L", 15), verified("R", 8)], || panic!(
                 "must not commit"
             ))
             .is_err()
         );
         assert!(io.writes.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod calibrated_tests {
+    use super::*;
+    struct WriteOnly {
+        inputs: Vec<u16>,
+    }
+    impl Ddc for WriteOnly {
+        fn read(&mut self, _: &str) -> Result<u16, String> {
+            panic!("must not probe a calibrated-only monitor")
+        }
+        fn write(&mut self, _: &str, _: u16) -> Result<(), String> {
+            panic!("must not claim readback verification")
+        }
+        fn write_only(&mut self, _: &str, v: u16) -> Result<(), String> {
+            self.inputs.push(v);
+            Ok(())
+        }
+    }
+    #[test]
+    fn calibrated_monitor_uses_confirmed_baseline_without_readback() {
+        let mut ddc = WriteOnly { inputs: vec![] };
+        let change = InputChange {
+            display: "gm".into(),
+            input: 8,
+            calibrated_before: Some(7),
+        };
+        transaction(&mut ddc, &[change], || Ok(())).unwrap();
+        assert_eq!(ddc.inputs, vec![8]);
+    }
+    #[test]
+    fn failed_calibrated_scene_resends_baseline_without_claiming_verified_restoration() {
+        let mut ddc = WriteOnly { inputs: vec![] };
+        let change = InputChange {
+            display: "gm".into(),
+            input: 8,
+            calibrated_before: Some(7),
+        };
+        let error = transaction(&mut ddc, &[change], || Err("stale".into())).unwrap_err();
+        assert_eq!(ddc.inputs, vec![8, 7]);
+        assert!(error.contains("visual confirmation"));
     }
 }

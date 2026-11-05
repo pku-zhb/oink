@@ -445,6 +445,39 @@ fn physical_scene_redirects_a_computer_without_any_visible_monitor() {
 }
 
 #[test]
+fn physical_order_overrides_reversed_native_order_when_one_computer_owns_both_monitors() {
+    let mut displays = vec![display(), display()];
+    displays[0].key = "u27".into();
+    displays[0].is_primary = true;
+    displays[1].key = "gm".into();
+    displays[1].is_primary = false;
+    let width = displays[0].bounds.w;
+    displays[1].bounds.x = -width;
+    let mut saved = Layout::auto(&[(ME, displays.clone())]);
+    saved.settings.physical_screens = vec![
+        oink_display::layout::PhysicalScreen {
+            device: ME.to_hex(),
+            display: "u27".into(),
+            rect: Rect::new(0., 0., 1., 1.),
+        },
+        oink_display::layout::PhysicalScreen {
+            device: ME.to_hex(),
+            display: "gm".into(),
+            rect: Rect::new(1., 0., 1., 1.),
+        },
+    ];
+    let mut r = router();
+    r.set_local_displays(displays);
+    r.set_cursor(Point::new(width - 10., 40.));
+    r.set_layout(Arc::new(TopologyLayout::from_layout(&saved, &Default::default())));
+    assert!(r.hidden_cursor_constraint().is_some());
+    r.local_motion(20., 0., Some(Point::new(width - 1., 40.)), 100);
+    assert_eq!(r.local_cursor.as_ref().unwrap().screen.display, "gm");
+    r.local_motion(-20., 0., Some(Point::new(-width, 40.)), 200);
+    assert_eq!(r.local_cursor.as_ref().unwrap().screen.display, "u27");
+}
+
+#[test]
 fn physical_scenes_cross_both_directions_instead_of_entering_the_invisible_native_neighbour() {
     for local_on_left in [true, false] {
         let mut displays = vec![display(), display()];

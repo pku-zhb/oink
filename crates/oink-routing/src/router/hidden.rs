@@ -14,10 +14,11 @@ impl Router {
             return None;
         }
         let topology = self.layout.gap_topology()?;
-        if !topology
-            .screens()
-            .iter()
-            .any(|s| s.id.device == self.me() && !s.enabled)
+        if topology.settings().physical_screens.is_empty()
+            && !topology
+                .screens()
+                .iter()
+                .any(|s| s.id.device == self.me() && !s.enabled)
         {
             return None;
         }
