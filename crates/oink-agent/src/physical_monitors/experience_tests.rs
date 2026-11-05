@@ -339,6 +339,42 @@ fn authenticated_desktop_transactions_and_recovery() {
         invoke(&a, Request::Restore).await.unwrap();
         await_phase(&a, "reverted").await;
 
+        // A boot change between prepare and confirmation cannot continue the
+        // old native transaction, even when its journal and helper still exist.
+        *lock(&a.inner.physical.cooldown) = 0;
+        invoke(
+            &a,
+            Request::Apply {
+                expected_revision: 1,
+                choices: mixed.clone(),
+                mode: Mode::Complete,
+                baseline_confirmed: true,
+            },
+        )
+        .await
+        .unwrap();
+        await_phase(&a, "awaiting_confirmation").await;
+        until("peer prepared its boot-fenced confirmation", || {
+            super::recovery::read(&super::recovery::path(b.data_dir()))
+                .ok()
+                .flatten()
+                .is_some_and(|r| r.confirmation.is_some())
+        })
+        .await;
+        let path = super::recovery::path(b.data_dir());
+        let mut record = super::recovery::read(&path).unwrap().unwrap();
+        assert_ne!(b.boot().nonce, [0; 16]);
+        record.owner_boot = Some([0; 16]);
+        super::recovery::write(&path, &record).unwrap();
+        let op = lock(&a.inner.physical.operation).clone().unwrap().id;
+        invoke(&a, Request::Keep { operation: op }).await.unwrap();
+        await_phase(&a, "reverted").await;
+        assert_eq!(*lock(&ha.displays), ha.original);
+        assert_eq!(*lock(&hb.displays), hb.original);
+        assert!(store(&b).unwrap().active.is_empty());
+        invoke(&a, Request::Restore).await.unwrap();
+        await_phase(&a, "reverted").await;
+
         // Unconfirmed changes automatically roll back, without a live UI.
         *lock(&a.inner.physical.cooldown) = 0;
         a.inner.physical.confirm_ms.store(5000, Ordering::Relaxed);

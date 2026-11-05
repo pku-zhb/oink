@@ -24,6 +24,8 @@ The confirmation is global to the main window, not tied to an open settings page
 
 The coordinator serializes operations. Each owner also checks the operation identity, expiry and local journal under a per-process gate and a cross-process file lock. Invalid, stale or concurrent commands cannot reuse a newer recovery point. Input writes are separated from readback polling, and successful operations have a cooling period. Native writes are never automatically retried as ordinary request retransmission.
 
+The prepared owner boot is retained in the journal. A backend restart or reboot cannot continue that owner's earlier native transaction; the coordinator compensates it using the recovery point. A pending confirmation from an older owner boot is not offered to the new UI.
+
 Bindings and entry snapshots are independent of the live display list, so a temporarily disabled display is not forgotten. Switching from a layout with disabled displays reconnects the saved baseline before issuing input changes. Hardware without input readback uses an explicitly confirmed baseline and does not claim hardware-verified results. A routing change outside the retained session requires renewed baseline confirmation.
 
 ## Protocol and storage

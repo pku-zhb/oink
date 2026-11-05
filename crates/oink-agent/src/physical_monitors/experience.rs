@@ -275,6 +275,9 @@ fn same_operation(node: &Node, operation: &str) -> Result<Record, String> {
     if record.id != operation || record.outcome.is_some() {
         return Err("This operation has already ended".into());
     }
+    if record.owner_boot != Some(node.boot().nonce) {
+        return Err("The display owner restarted; restore the previous operation before continuing".into());
+    }
     if recovery::now_ms() >= record.deadline_ms {
         return Err("The operation expired; recovery is in progress".into());
     }
@@ -425,6 +428,9 @@ pub fn execute(node: &Node, request: Request) -> Result<serde_json::Value, Strin
         let record = recovery::read(&recovery::path(node.data_dir()))?.or(lock(&node.inner.physical.local).clone());
         let prompt = record
             .filter(|r| group(node).ok().as_deref() == Some(r.group.as_str()))
+            .filter(|r| {
+                r.confirmation.as_ref().is_none_or(|c| c.phase != "pending") || r.owner_boot == Some(node.boot().nonce)
+            })
             .and_then(|r| r.confirmation)
             .filter(|c| {
                 c.deadline_ms > recovery::now_ms()
@@ -1029,6 +1035,7 @@ pub(super) fn receive(node: &Node, peer: DeviceKey, request: PeerRequest) -> Res
                 outcome: None,
                 ready: false,
                 helper_pid: None,
+                owner_boot: Some(node.boot().nonce),
                 group: group(node)?,
                 previous_choices: store(node)?.active,
                 previous_mode: store(node)?.mode,
@@ -1609,6 +1616,7 @@ fn calibrate(node: &Node, operation: String, panel: Panel, target: DeviceKey) ->
         outcome: None,
         ready: false,
         helper_pid: None,
+        owner_boot: Some(node.boot().nonce),
         group: group(node)?,
         previous_choices: store(node)?.active,
         previous_mode: store(node)?.mode,

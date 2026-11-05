@@ -34,6 +34,8 @@ pub struct Record {
     #[serde(default)]
     pub helper_pid: Option<u32>,
     #[serde(default)]
+    pub owner_boot: Option<[u8; 16]>,
+    #[serde(default)]
     pub group: String,
     #[serde(default)]
     pub previous_choices: Vec<crate::api::ScreenKey>,
@@ -299,6 +301,7 @@ mod tests {
             outcome: None,
             ready: false,
             helper_pid: None,
+            owner_boot: None,
             visible_displays: vec![],
             prompt_displays: vec![],
             confirmation: None,
