@@ -213,6 +213,29 @@ fn confirmation_does_not_wait_past_the_recovery_deadline_for_a_missing_display()
 }
 
 #[test]
+fn confirmation_legacy_deadlines_do_not_expire_early_when_peer_clocks_differ() {
+    for coordinator_clock in [1, 86_800, 900_000_000] {
+        let legacy: PeerRequest = serde_json::from_value(serde_json::json!({
+            "action":"await", "operation":"f".repeat(32), "deadline_ms":coordinator_clock
+        }))
+        .unwrap();
+        let PeerRequest::Await { remaining_ms, .. } = legacy else {
+            unreachable!()
+        };
+        assert_eq!(remaining_ms, None);
+        assert_eq!(confirmation_deadline(100_000, remaining_ms).unwrap(), 115_000);
+    }
+}
+
+#[test]
+fn confirmation_relative_duration_preserves_short_tests_and_rejects_unbounded_guards() {
+    assert_eq!(confirmation_deadline(100_000, Some(1200)).unwrap(), 101_200);
+    assert!(confirmation_deadline(100_000, Some(0)).is_err());
+    assert!(confirmation_deadline(100_000, Some(15_001)).is_err());
+    assert!(confirmation_deadline(u64::MAX, Some(15_000)).is_err());
+}
+
+#[test]
 fn authenticated_desktop_transactions_and_recovery() {
     crate::test_watchdog::run(module_path!(), "physical-desktop-transactions", Some(35), async {
         let dir = tempfile::tempdir().unwrap();

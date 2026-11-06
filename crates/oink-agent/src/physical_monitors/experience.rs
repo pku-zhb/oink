@@ -118,7 +118,10 @@ pub(super) enum PeerRequest {
     },
     Await {
         operation: String,
+        // Retained for older receivers; wall clocks need not agree across peers.
         deadline_ms: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        remaining_ms: Option<u64>,
     },
     Finish {
         operation: String,
@@ -547,7 +550,7 @@ pub fn execute(node: &Node, request: Request) -> Result<serde_json::Value, Strin
     }
     let owner = coordinator(node, &request)?;
     if owner.0 != node.id() {
-        let result = transport::request(
+        let mut result = transport::request(
             node,
             owner,
             PeerRequest::Client {
@@ -558,6 +561,21 @@ pub fn execute(node: &Node, request: Request) -> Result<serde_json::Value, Strin
             let mut local = status(node)?;
             local["coordinator_error"] = serde_json::Value::String(result.err().unwrap());
             return Ok(local);
+        }
+        // Status originates on the coordinator, but its countdown is rendered
+        // using this computer's wall clock. Its local journal owns the deadline.
+        if let Ok(value) = &mut result
+            && value
+                .pointer("/operation/deadline_ms")
+                .is_some_and(serde_json::Value::is_u64)
+            && let Some(operation) = value.pointer("/operation/id").and_then(serde_json::Value::as_str)
+            && let Ok(Some(record)) = recovery::read(&recovery::path(node.data_dir()))
+            && record.id == operation
+            && record.owner_boot == Some(node.boot().nonce)
+            && record.outcome.is_none()
+            && record.confirmation.as_ref().is_some_and(|c| c.phase == "pending")
+        {
+            value["operation"]["deadline_ms"] = record.deadline_ms.into();
         }
         return result;
     }
@@ -1111,7 +1129,11 @@ pub(super) fn receive(node: &Node, peer: DeviceKey, request: PeerRequest) -> Res
             hardware(node).apply(&snapshot, &plan)?;
             Ok(serde_json::json!({"applied":true}))
         }
-        PeerRequest::Await { operation, deadline_ms } => {
+        PeerRequest::Await {
+            operation,
+            deadline_ms: _,
+            remaining_ms,
+        } => {
             authorize(node, peer)?;
             let _gate = node
                 .inner
@@ -1121,9 +1143,7 @@ pub(super) fn receive(node: &Node, peer: DeviceKey, request: PeerRequest) -> Res
                 .map_err(|_| "The display owner is busy")?;
             let _file_guard = recovery::guard(node.data_dir())?;
             let mut record = same_operation(node, &operation)?;
-            if deadline_ms <= recovery::now_ms() || deadline_ms > recovery::now_ms() + CONFIRM_MS + 1000 {
-                return Err("Invalid confirmation deadline".into());
-            }
+            let deadline_ms = confirmation_deadline(recovery::now_ms(), remaining_ms)?;
             record.deadline_ms = deadline_ms;
             record.confirmation = Some(make_confirmation(node, &record, "pending", deadline_ms)?);
             recovery::write(&recovery::path(node.data_dir()), &record)?;
@@ -1216,6 +1236,18 @@ pub(super) fn receive(node: &Node, peer: DeviceKey, request: PeerRequest) -> Res
             Ok(serde_json::json!({"restored":true}))
         }
     }
+}
+// Legacy coordinators supply only an absolute time. Their local 15-second
+// decision still cancels the transaction; give this peer its own bounded guard
+// rather than interpreting another machine's clock as a local expiry.
+pub(super) fn confirmation_deadline(now_ms: u64, remaining_ms: Option<u64>) -> Result<u64, String> {
+    let remaining_ms = remaining_ms.unwrap_or(CONFIRM_MS);
+    if remaining_ms == 0 || remaining_ms > CONFIRM_MS {
+        return Err("Invalid confirmation duration".into());
+    }
+    now_ms
+        .checked_add(remaining_ms)
+        .ok_or("Invalid confirmation deadline".into())
 }
 
 fn make_confirmation(node: &Node, record: &Record, phase: &str, deadline_ms: u64) -> Result<Confirmation, String> {
@@ -1460,6 +1492,7 @@ fn apply(node: &Node, operation: String, mapping: Mapping, choices: Vec<ScreenKe
                 PeerRequest::Await {
                     operation: operation.clone(),
                     deadline_ms: deadline,
+                    remaining_ms: Some(deadline.saturating_sub(recovery::now_ms())),
                 },
             )?;
         }
