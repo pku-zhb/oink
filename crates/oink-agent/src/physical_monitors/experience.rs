@@ -1255,7 +1255,7 @@ fn make_confirmation(node: &Node, record: &Record, phase: &str, deadline_ms: u64
 }
 // Input switching can briefly remove a target from the native display catalog.
 // Readiness polling never repeats DDC writes and leaves time to reject the prompt.
-fn confirmation_bounds(
+pub(super) fn confirmation_bounds(
     visible: &[String],
     deadline_ms: u64,
     mut displays: impl FnMut() -> Result<Vec<oink_foundation::display::DisplayInfo>, String>,
