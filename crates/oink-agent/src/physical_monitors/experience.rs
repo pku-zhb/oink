@@ -1233,20 +1233,14 @@ fn make_confirmation(node: &Node, record: &Record, phase: &str, deadline_ms: u64
             .map(|d| d.bounds)
     });
     let bounds = if phase == "pending" && !record.visible_displays.is_empty() {
-        let displays = node
+        let backend = node
             .inner
             .display_backend
             .as_ref()
-            .ok_or("Display backend unavailable")?
-            .displays()
-            .map_err(|e| e.to_string())?;
-        Some(
-            record
-                .visible_displays
-                .iter()
-                .find_map(|key| displays.iter().find(|d| &d.key == key).map(|d| d.bounds))
-                .ok_or("No assigned display is available for layout confirmation")?,
-        )
+            .ok_or("Display backend unavailable")?;
+        Some(confirmation_bounds(&record.visible_displays, deadline_ms, || {
+            backend.displays().map_err(|e| e.to_string())
+        })?)
     } else {
         None
     };
@@ -1258,6 +1252,34 @@ fn make_confirmation(node: &Node, record: &Record, phase: &str, deadline_ms: u64
         previous_bounds,
         macos: cfg!(target_os = "macos"),
     })
+}
+// Input switching can briefly remove a target from the native display catalog.
+// Readiness polling never repeats DDC writes and leaves time to reject the prompt.
+fn confirmation_bounds(
+    visible: &[String],
+    deadline_ms: u64,
+    mut displays: impl FnMut() -> Result<Vec<oink_foundation::display::DisplayInfo>, String>,
+) -> Result<oink_foundation::Rect, String> {
+    let budget = Duration::from_millis(
+        deadline_ms
+            .saturating_sub(recovery::now_ms())
+            .saturating_sub(1000)
+            .min(3000),
+    );
+    let started = std::time::Instant::now();
+    loop {
+        let current = displays()?;
+        if let Some(bounds) = visible
+            .iter()
+            .find_map(|key| current.iter().find(|d| &d.key == key).map(|d| d.bounds))
+        {
+            return Ok(bounds);
+        }
+        if started.elapsed() >= budget {
+            return Err("No assigned display is available for layout confirmation".into());
+        }
+        std::thread::sleep(Duration::from_millis(100).min(budget.saturating_sub(started.elapsed())));
+    }
 }
 fn show_prompt(node: &Node, record: &Record) {
     if node.native_services_enabled()
@@ -1427,9 +1449,9 @@ fn apply(node: &Node, operation: String, mapping: Mapping, choices: Vec<ScreenKe
         *lock(&node.inner.physical.decision) = Some((operation.clone(), tx));
         phase(
             node,
-            "awaiting_confirmation",
-            "Keep this layout or it will automatically return",
-            Some(deadline),
+            "preparing",
+            "Waiting for the assigned displays to become available",
+            None,
         );
         for peer in &peers {
             transport::request(
@@ -1441,6 +1463,12 @@ fn apply(node: &Node, operation: String, mapping: Mapping, choices: Vec<ScreenKe
                 },
             )?;
         }
+        phase(
+            node,
+            "awaiting_confirmation",
+            "Keep this layout or it will automatically return",
+            Some(deadline),
+        );
         if !rx
             .recv_timeout(Duration::from_millis(deadline.saturating_sub(recovery::now_ms())))
             .unwrap_or(false)

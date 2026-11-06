@@ -190,6 +190,29 @@ fn mapping(a: &Node, b: &Node) -> Mapping {
 }
 
 #[test]
+fn confirmation_waits_for_a_disappearing_display_without_replaying_input_writes() {
+    let hardware = Hardware::new("late");
+    let visible = vec!["left-late".to_string()];
+    let mut reads = 0;
+    let bounds = confirmation_bounds(&visible, super::recovery::now_ms() + 2500, || {
+        reads += 1;
+        Ok(if reads < 4 { vec![] } else { hardware.original.clone() })
+    })
+    .unwrap();
+    assert_eq!(bounds, hardware.original[0].bounds);
+    assert_eq!(reads, 4);
+    assert_eq!(hardware.read("left-late"), Ok(17));
+}
+
+#[test]
+fn confirmation_does_not_wait_past_the_recovery_deadline_for_a_missing_display() {
+    let started = std::time::Instant::now();
+    let result = confirmation_bounds(&["missing".into()], super::recovery::now_ms() + 1150, || Ok(vec![]));
+    assert!(result.unwrap_err().contains("No assigned display"));
+    assert!(started.elapsed() < std::time::Duration::from_secs(1));
+}
+
+#[test]
 fn authenticated_desktop_transactions_and_recovery() {
     crate::test_watchdog::run(module_path!(), "physical-desktop-transactions", Some(35), async {
         let dir = tempfile::tempdir().unwrap();

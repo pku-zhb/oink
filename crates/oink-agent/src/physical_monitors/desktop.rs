@@ -48,7 +48,11 @@ pub fn preflight(snapshot: &Snapshot, plan: &DesktopPlan) -> Result<(), String> 
             format!("-UUID={key}"),
             "-connected".into(),
             "-value".into(),
-        ])?;
+        ])
+        .map_err(|_| {
+            "BetterDisplay connection management is unavailable; check Pro and connection settings, or use compatible mode"
+                .to_string()
+        })?;
         if !matches!(
             output.trim().to_ascii_lowercase().as_str(),
             "on" | "off" | "true" | "false" | "1" | "0"
